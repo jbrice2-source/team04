@@ -105,6 +105,8 @@ class TakeImages:
         
     def loop(self):
         if self.pose.theta == self.targets[self.cur_target]*np.pi/180:
+            if not os.path.isdir("pictures"):
+                os.mkdir("pictures")
             
             img1 = self.camera[0]
             if type(img1) != None:
@@ -118,7 +120,7 @@ if __name__ == "__main__":
     if(rospy.get_node_uri()):
         pass
     else:
-        rospy.init_node("take_images", anonymous=True)
+        rospy.init_node("take_images")
     rospy.sleep(200)
     while not rospy.core.is_shutdown():
         main.loop()
