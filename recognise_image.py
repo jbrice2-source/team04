@@ -7,18 +7,23 @@ MIN_MATCH_COUNT = 10
 images = glob("cropped_pictures/*.png")[::2]
 img2 = cv.imread('pictures/135_1.png', cv.IMREAD_GRAYSCALE) # trainImage
 best = ([],None,None,None)
+
+image_data = np.empty_like(images,dtype=tuple)
+
+# Initiate SIFT detector
+sift = cv.SIFT_create()
+for i,n in enumerate(images):
+    img1 = cv.imread(n, cv.IMREAD_GRAYSCALE)          # queryImage
+    kp1, des1 = sift.detectAndCompute(img1,None)
+    image_data[i] = (img1,kp1,des1)
  
-for i in images:
+for i in image_data:
 
-    img1 = cv.imread(i, cv.IMREAD_GRAYSCALE)          # queryImage
+    kp2, des2 = sift.detectAndCompute(img2,None)
 
-    
-    # Initiate SIFT detector
-    sift = cv.SIFT_create()
+
     
     # find the keypoints and descriptors with SIFT
-    kp1, des1 = sift.detectAndCompute(img1,None)
-    kp2, des2 = sift.detectAndCompute(img2,None)
     
     FLANN_INDEX_KDTREE = 1
     index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
@@ -26,7 +31,7 @@ for i in images:
     
     flann = cv.FlannBasedMatcher(index_params, search_params)
     
-    matches = flann.knnMatch(des1,des2,k=2)
+    matches = flann.knnMatch(i[2],des2,k=2)
     
     # store all the good matches as per Lowe's ratio test.
     good = []
@@ -34,7 +39,7 @@ for i in images:
         if m.distance < 0.7*n.distance:
             good.append(m)
     if len(good) > len(best[0]):
-        best = (good,img1,kp1,kp2)
+        best = (good,i[0],i[1],kp2)
         print(i)
         
         
@@ -52,6 +57,7 @@ if len(best[0])>MIN_MATCH_COUNT:
     # img2 = cv.polylines(img2,[np.int32([[[100,100]],[[100,200]],[[200,100]],[[200,100]]])],True,255,3, cv.LINE_AA)
     centroid = np.sum(dst, axis=0)/dst.shape[0]
     img2 = cv.circle(img2, (round(centroid[0,0]),round(centroid[0,1])), 10, (128,0,0), -1)
+    print(M)
 else:
     print( "Not enough matches are found - {}/{}".format(len(good), MIN_MATCH_COUNT) )
     matchesMask = None

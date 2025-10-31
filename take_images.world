@@ -83,7 +83,7 @@
 		<include>
 			<name>miro02</name>
 			<uri>model://miro_model</uri>
-			<pose>0.7 -0.0 0.15 0 0 3.14</pose>
+			<pose>0.7 -0.0 0 0 0 3.14</pose>
 		</include>
 
 		<gravity>0 0 -9.8</gravity>

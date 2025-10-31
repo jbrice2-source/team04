@@ -12,6 +12,7 @@ import numpy as np
 
 import math
 import miro2 as miro
+import time
 
 
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
@@ -31,9 +32,8 @@ class TakeImages:
         
         self.image_converter = CvBridge()
         self.camera = [None, None]
-        self.pose = Pose2D()
-        self.target = 90
-        self.targets = [0,90,180,270]
+        self.pos = Pose2D()
+        self.targets = [0,15,30,45,60,75,90,105,120,135,150,165,180,195,210,225,240,255,270,285,300,315,330,345]
         self.cur_target = 0
         
         
@@ -62,15 +62,9 @@ class TakeImages:
         
     def callback_pose(self, pose):
         if pose != None:
-            self.pose = pose
-            target = self.targets[self.cur_target]*np.pi/180
-            if pose.theta < target-0.1:
-                self.velocity.twist.angular.z = 0.5
-            elif pose.theta > target+0.1:
-                self.velocity.twist.angular.z = -0.5
-            else: 
-                self.velocity.twist.angular.z = 0.0
-            self.pub_cmd_vel.publish(self.velocity)
+            self.pos = pose
+            # print(self.pos.theta%(2*np.pi))
+
 
         
     def callback_caml(self, ros_image):
@@ -89,9 +83,9 @@ class TakeImages:
 
             # convert compressed ROS image to raw CV image
             image = self.image_converter.compressed_imgmsg_to_cv2(ros_image, "rgb8")
-            orb = cv2.ORB_create()
-            kp , des= orb.detectAndCompute(image,None)
-            image = cv2.drawKeypoints(image,kp,None,color=(0,0,255),flags=0)
+            # orb = cv2.ORB_create()
+            # kp , des= orb.detectAndCompute(image,None)
+            # image = cv2.drawKeypoints(image,kp,None,color=(0,0,255),flags=0)
 
             # store image for display
             self.camera[index] = image
@@ -103,27 +97,53 @@ class TakeImages:
             #print(e)
             pass
         
-    def loop(self):
-        if self.pose.theta == self.targets[self.cur_target]*np.pi/180:
-            if not os.path.isdir("pictures"):
-                os.mkdir("pictures")
-            
-            img1 = self.camera[0]
-            if type(img1) != None:
-                print(type(img1))
-                cv2.imwrite("pictures/{targets[self.cur_target]}.png", img1)
-                self.cur_target += 1
+    def take_picture(self):
+        if not os.path.isdir("pictures"):
+            os.mkdir("pictures")  
+        images = self.camera.copy()
         
+        if type(images[0]) != type(None) and type(images[1]) != type(None):
+            for i in range(len(images)):
+                # print(images[i])
+                cv2.imwrite(f"pictures/{self.targets[self.cur_target]}_{i}.png", images[i])
+            self.cur_target += 1
+        
+    def loop(self):
+        target = self.targets[self.cur_target]*np.pi/180
+        dists = [(self.pos.theta%(2*np.pi)-target)%(2*np.pi),(target-self.pos.theta%(2*np.pi))%(2*np.pi)]
+        # distmin = min(aself.pos.theta%(2*np.pi)-target),abs(target-self.pos.theta%(2*np.pi)))
+        # distmax = max(abs(self.pos.theta%(2*np.pi)-target),abs(target-self.pos.theta%(2*np.pi)))
+
+        # print(self.pos.theta, dists[0],dists[1], np.argmin(dists), target, self.velocity.twist.angular.z)
+        if min(dists) < 0.01:
+            print("taking picture",self.targets[self.cur_target])
+            self.velocity.twist.angular.z = 0.0
+            self.pub_cmd_vel.publish(self.velocity)
+            # rospy.sleep(2)
+            self.take_picture()
+        elif dists[0] >= dists[1]:
+            self.velocity.twist.angular.z = 0.6
+            # print("turning left")
+        else:
+            self.velocity.twist.angular.z = -0.6
+            # print("turning right")
+    
+        self.pub_cmd_vel.publish(self.velocity)
+
+
         
 if __name__ == "__main__":
-    main = TakeImages()
-    if(rospy.get_node_uri()):
-        pass
-    else:
-        rospy.init_node("take_images")
-    rospy.sleep(200)
-    while not rospy.core.is_shutdown():
-        main.loop()
-    self.interface.disconnect()
+    try:
+        main = TakeImages()
+        if(rospy.get_node_uri()):
+            pass
+        else:
+            rospy.init_node("take_images")
+        while not rospy.core.is_shutdown() and main.cur_target < len(main.targets):
+            main.loop()
+        main.interface.disconnect()
+        exit()
+    except Exception as e:
+        print("exception",e)
 
 
