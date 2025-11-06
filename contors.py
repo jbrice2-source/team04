@@ -2,9 +2,9 @@ import numpy as np
 import cv2
 from glob import glob
 
-images = glob("pictures/*.png")
+images = glob("dataset/*.png")
 
-for n in images[:]:
+for n in images[5:10]:
     original_img = cv2.imread(n)
     img = original_img.copy()
 
@@ -17,25 +17,29 @@ for n in images[:]:
     # equalised_image = cv2.cvtColor(equalised_image, cv2.COLOR_GRAY2BGR)
     
     # img = cv2.add(img,equalised_image)
-    # background = cv2.dilate(img,kernel,iterations=1)
-    # img = cv2.subtract(background, img)
-    # cv2.imshow("subtract", img)
+
 
     
-    blur = cv2.bilateralFilter(img, 11, 75,75)
+    blur = cv2.bilateralFilter(img, 9, 75,75)
     cv2.imshow("bilatteral filter", blur)
 
-    median = np.median(np.mean(original_img,axis=2))
+    # background = cv2.dilate(blur,kernel,iterations=1)
+    # blur = cv2.subtract(background, blur)
+    # cv2.imshow("subtract", blur)
+
+    median = np.median(np.mean(img,axis=2))
     lower_threshold = int(max(0, 0.66 * median))
     upper_threshold = int(min(255, 1.33 * median))
-    # blur = cv2.copyMakeBorder(blur,2,2,2,2,cv2.BORDER_CONSTANT,value=[255, 255, 255])
+    # blur = cv2.copyMakeBorder(blur,1,1,1,1,cv2.BORDER_CONSTANT,value=[255, 255, 255])
 
     edges = cv2.Canny(blur,lower_threshold,upper_threshold)
 
 
     edges = cv2.dilate(edges,kernel,iterations=2)
     edges = cv2.erode(edges,kernel,iterations=2)
-    edges = cv2.bitwise_not(edges)
+    # edges = cv2.bitwise_not(edges)
+    # edges = cv2.dilate(edges,kernel,iterations=1)
+    # edges = cv2.erode(edges,kernel,iterations=2)
 
     cv2.imshow("processed edges", edges)
 
@@ -50,15 +54,17 @@ for n in images[:]:
             
     # print(child_num)
     # print(hierarchy)
+    get_area = lambda x: np.prod(np.max(x,axis=0)-np.min(x,axis=0))
     cont_list = []
     hiere_list = np.array([])
     for i,n in enumerate(contours):
-        if len(n) < 500:
+        if cv2.arcLength(n, True) < 150 and cv2.contourArea(n) < 3000:
             cont_list.append(n)
             hiere_list = np.append(hiere_list,hierarchy[0,i]).reshape(-1,4)
 
-    print(list(map(len,contours)))
-    print(list(map(len,cont_list)))
+    # print(list(map(cv2.arcLength,contours)))
+    # print(list(map(cv2.arcLength,cont_list)))
+    print(list(map(cv2.contourArea,contours)))
 
     img2 = blur.copy()
     cv2.drawContours(img2, contours, -1, (0,255,0), 1)
