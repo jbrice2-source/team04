@@ -35,7 +35,7 @@ class TakeImages:
         self.pos = Pose2D()
         self.targets = [0,15,30,45,60,75,90,105,120,135,150,165,180,195,210,225,240,255,270,285,300,315,330,345]
         self.cur_target = 0
-        
+        self.input_package = None
         
 
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
@@ -46,8 +46,8 @@ class TakeImages:
         # self.pub_command = rospy.Publisher(basename + "/control/command", String, queue_size=0)
 
         # subscribers
-        # self.sub_package = rospy.Subscriber(base2 + "/sensors/package",
-        #             miro.msg.sensors_package, self.callback_package, queue_size=1, tcp_nodelay=True)
+        self.sub_package = rospy.Subscriber(base2 + "/sensors/package",
+                    miro.msg.sensors_package, self.callback_package, queue_size=1, tcp_nodelay=True)
         self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
             Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
         # self.sub_mics = rospy.Subscriber(basename + "/sensors/mics",
@@ -65,7 +65,8 @@ class TakeImages:
             self.pos = pose
             # print(self.pos.theta%(2*np.pi))
 
-
+    def callback_package(self,msg):
+        self.input_package = msg
         
     def callback_caml(self, ros_image):
         self.callback_cam(ros_image,0)
