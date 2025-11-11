@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
 # Read left and right images
-left_image = cv2.imread('pictures/270_0.png')
+left_image = cv2.imread('pictures/285_0.png')[50:-50,50:-50]
 # left_image = cv2.imread('wall3.jpg')
-right_image = cv2.imread('pictures/270_1.png')
+right_image = cv2.imread('pictures/315_1.png')[50:-50,50:-50]
 # right_image = cv2.imread('wall2.jpg')
 
 # Display left and right images
@@ -50,25 +50,24 @@ for i,n in enumerate(points):
     points2[i] = n[0]-n[1]
 
 # print(points2)
-print(150/points2[:,0])
-print(1/points2[:,1])
-dists = 150/points2[:,0]
+print((2*0.086*1000)/points2[:,0])
+dists = (2*0.086*1000)/points2[:,0]
 
 dist_img = left_image.copy()
 for i,n in enumerate(points):
-    if dists[i] < 0.55:
-        cv2.circle(dist_img,np.astype(n[0],int),5,(64,0,0))
-    elif dists[i] < 0.6:
-        cv2.circle(dist_img,np.astype(n[0],int),5,(128,0,0))
-    elif dists[i] < 0.65:
-        cv2.circle(dist_img,np.astype(n[0],int),5,(192,0,0))
+    if dists[i] < 0.6:
+        cv2.circle(dist_img,np.astype(n[0],int),5,(64,255,0))
     elif dists[i] < 0.7:
-        cv2.circle(dist_img,np.astype(n[0],int),5,(256,0,0))
+        cv2.circle(dist_img,np.astype(n[0],int),5,(128,192,0))
+    elif dists[i] < 0.8:
+        cv2.circle(dist_img,np.astype(n[0],int),5,(192,128,0))
+    else:
+        cv2.circle(dist_img,np.astype(n[0],int),5,(255,64,0))
 
 cv2.imshow('Left Image', orb_img)
 cv2.imshow('Right Image', orb_img2)
 cv2.imshow('matches Image', img3)
-cv2.imshow('matches Image', dist_img)
+cv2.imshow('dist Image', dist_img)
 
 cv2.waitKey(0)
 
