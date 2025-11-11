@@ -1,13 +1,23 @@
 import cv2
 import numpy as np
+
+
+with open("dataset/labels.csv") as f:
+    dataset = f.readlines()
+    
+dataset = list(e.strip().split(",") for e in dataset)
+
+
 # Read left and right images
-left_image = cv2.imread('pictures/285_0.png')[50:-50,50:-50]
+left_image = cv2.imread(f"dataset/{dataset[16][0]}.png")
 # left_image = cv2.imread('wall3.jpg')
-right_image = cv2.imread('pictures/315_1.png')[50:-50,50:-50]
+right_image = cv2.imread(f"dataset/{dataset[17][0]}.png")
 # right_image = cv2.imread('wall2.jpg')
 
-# Display left and right images
+print(np.sqrt(np.pow(float(dataset[6][2])-float(dataset[6][5]),2)+np.pow(float(dataset[6][3])-float(dataset[6][6]),2)))
 
+
+# Display left and right images
 orb = cv2.ORB_create()
 
 kp1, des1 = orb.detectAndCompute(left_image,None)

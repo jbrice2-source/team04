@@ -1,0 +1,7 @@
+path: /home/hancom/miro-docker/team04/processed_dataset
+train: train/images
+val: test/images
+
+nc: 10
+
+names: ["345_15","15_45","45_75","75_105","135_165","165_195","195_225","225_255","255_285","315_345"]
