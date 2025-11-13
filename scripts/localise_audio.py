@@ -1,9 +1,9 @@
-
 #!/usr/bin/env python3
 import os
 import rospy
 import numpy as np
-from std_msgs.msg import Int16MultiArray, Float32
+from std_msgs.msg import Int16MultiArray, Float32, Float32MultiArray
+import miro2
 
 # GCC phat algorithm to compute difference in arrival time of sound for localisation
 # takes left and right audio signals as input
@@ -23,15 +23,23 @@ def gcc_phat(sig, refsig, fs=20000, max_tau=None, interp=1):
     shift = np.argmax(np.abs(cc)) - max_shift
     tau = shift / float(interp * fs)
     return tau
+past_angles = np.zeros(30,dtype=float)
 
+cur_angle = 0.0
 def audio_callback(msg):
+    global past_angles, cos_joints, pub_cos, cur_angle
     # miros audio - to np array
-    data = np.array(msg.data, dtype=np.int16)
+    # data = np.array(msg.data, dtype=np.int16)
     # miro uses 4 microphones so reshape to n_frames and 4 channels
-    frames = data.reshape(-1, 4)
+    # frames = data.reshape(-1, 4)
+    
+    data = np.asarray(msg.data)
+    data = np.transpose(data.reshape((4, 500)))
+    data = np.flipud(data)
+    frames = data
     # separate left and right channels
-    left = frames[:, 0]  # left mic
-    right = frames[:, 2] # right mic
+    left = frames[:,0]  # left mic
+    right = frames[:, 1] # right mic
 
     fs = 20000 # sampling frequency
     mic_distance = 0.14 # distance between microphones
@@ -42,9 +50,27 @@ def audio_callback(msg):
     # calculate direction (as an angle) of sound source
     angle = np.arcsin(np.clip(speed_sound * tau / mic_distance, -1.0, 1.0))
     angle_deg = np.degrees(angle)
+    cur_angle = angle_deg
+    if angle_deg != 0:
+        past_angles = np.append(np.array([angle_deg]),past_angles[1:])
+    mean = np.mean(past_angles[past_angles != 0]*np.linspace(1.0,0.01,num=30))
+    if np.isnan(mean):
+        mean = 0
+    else:
+        cos_joints.data[left_ear] = np.round(np.clip(np.radians(mean+90)/(np.pi),0.01,0.99),1)
+        cos_joints.data[right_ear] = np.round(np.clip(1-np.radians(mean+90)/(np.pi),0.01,0.99),1)
+        # pub_cos.publish(cos_joints)
+        print(np.clip(np.radians(mean+90)/(np.pi),0.01,0.99))
     # log for debugging / confirmation and send to publisher
-    rospy.loginfo(f"Sound angle: {angle_deg:.2f}°")
-    pub_angle.publish(Float32(data=angle_deg))
+    rospy.loginfo(f"Sound angle: {angle_deg:.2f}° {mean:.2f}")
+    # pub_angle.publish(Float32(data=angle_deg))
+
+def move_ear(*args):
+    pub_cos.publish(cos_joints)
+
+droop, wag, left_eye, right_eye, left_ear, right_ear = range(6)
+cos_joints = Float32MultiArray()
+cos_joints.data = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 if __name__ == '__main__':
     rospy.init_node('localise_audio')
@@ -52,7 +78,10 @@ if __name__ == '__main__':
     robot_name = rospy.get_param("~robot", os.getenv("MIRO_ROBOT_NAME", "rob01"))
     # publish the angle of the sound source to sound_direction topic
     pub_angle = rospy.Publisher('/sound_direction', Float32, queue_size=5)
-    
+    pub_cos = rospy.Publisher(f"/miro/control/cosmetic_joints", Float32MultiArray, queue_size=5)
+    timer = rospy.Timer(rospy.Duration(0.5),move_ear)
+    pub_cos.publish(cos_joints)
+    print(robot_name)
     # subscribe to microphone audio data
     mic_topic = f"/{robot_name}/sensors/mics"
     print("subscribe to mic topic")
