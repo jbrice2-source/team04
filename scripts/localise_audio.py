@@ -2,6 +2,7 @@
 import os
 import rospy
 import numpy as np
+import scipy
 from std_msgs.msg import Int16MultiArray, Float32, Float32MultiArray
 import miro2
 
@@ -25,6 +26,12 @@ def gcc_phat(sig, refsig, fs=20000, max_tau=None, interp=1):
     return tau
 past_angles = np.zeros(30,dtype=float)
 
+
+def bandpass(data, edges, sample_rate: float, poles: int = 5):
+    sos = scipy.signal.butter(poles, edges, 'bandpass', fs=sample_rate, output='sos')
+    filtered_data = scipy.signal.sosfiltfilt(sos, data)
+    return filtered_data
+
 cur_angle = 0.0
 def audio_callback(msg):
     global past_angles, cos_joints, pub_cos, cur_angle
@@ -42,11 +49,15 @@ def audio_callback(msg):
     right = frames[:, 1] # right mic
 
     fs = 20000 # sampling frequency
-    mic_distance = 0.14 # distance between microphones
+    mic_distance = 0.11 # distance between microphones
     speed_sound = 343.0 # speed of sound
+    
+    left_bandpassed = bandpass(left, [850.0,950.0], fs)
+    right_bandpassed = bandpass(right, [850.0,950.0], fs)
+    print(left_bandpassed)
 
     # tau - estimated time delay using gcc function
-    tau = gcc_phat(left, right, fs)
+    tau = gcc_phat(left_bandpassed, right_bandpassed, fs)
     # calculate direction (as an angle) of sound source
     angle = np.arcsin(np.clip(speed_sound * tau / mic_distance, -1.0, 1.0))
     angle_deg = np.degrees(angle)
