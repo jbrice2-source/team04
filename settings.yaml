@@ -1,6 +1,7 @@
 path: /home/hancom/miro-docker/team04/processed_dataset
 train: train/images
 val: test/images
+save_dir: /home/hancom/miro-docker/team04/runs/detect/train
 
 nc: 10
 

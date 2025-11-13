@@ -1,0 +1,10 @@
+
+task: segment
+path: /home/hancom/miro-docker/team04/mask_dataset
+train: train/images
+val: test/images
+single_class: True
+
+nc: 1
+
+names: ["miro"]
