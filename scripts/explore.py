@@ -34,61 +34,93 @@ class Explore:
         # self.velocity# = TwistStamped()
         
         self.pos = Pose2D()
+        self.start_pos = None
         self.cur_target = None
         self.time1 = time.time_ns()
         self.add_dist = 0.0
         self.camera_interval  = time.time_ns()
         self.kin = JointState()
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.kin.position = [0.0, math.radians(50.0), 0.0, 0.0]
+        self.kin.position = [0.0, math.radians(20.0), 0.0, math.radians(-15.0)]
         self.input_package = None
-        self.map = np.zeros((100,100))
+        self.map = np.zeros((200,200,3),np.uint8)+255
+        self.display = None
         # self.cos_joints = Float32MultiArray()
         # self.cos_joints.data = [0.0, 0.0, 1.0, 1.0, 0.0, 0.0]
+        self.map_start = np.array([100,100])
+        self.map_pos = np.copy(self.map_start)
 
-
-        self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
-        # self.pub_cmd_vel2 = rospy.Publisher(base2 + "/control/cmd_vel", TwistStamped, queue_size=0)
-        # self.pub_cos = rospy.Publisher(base1 + "/control/cosmetic_joints", Float32MultiArray, queue_size=0)
-        # self.pub_illum = rospy.Publisher(basename + "/control/illum", UInt32MultiArray, queue_size=0)
-        self.pub_kin = rospy.Publisher(base1 + "/control/kinematic_joints", JointState, queue_size=0)
-        # self.pub_tone = rospy.Publisher(basename + "/control/tone", UInt16MultiArray, queue_size=0)
-        # self.pub_command = rospy.Publisher(basename + "/control/command", String, queue_size=0)
+        self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=10)
+        self.pub_kin = rospy.Publisher(base1 + "/control/kinematic_joints", JointState, queue_size=10)
 
         # subscribers
         self.sub_package = rospy.Subscriber(base1 + "/sensors/package",
                     miro.msg.sensors_package, self.callback_package, queue_size=1, tcp_nodelay=True)
         self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
             Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
-        # self.pose2 = rospy.Subscriber(base2 + "/sensors/body_pose",
-        #     Pose2D, self.callback_pose2, queue_size=1, tcp_nodelay=True)
-        # self.sub_mics = rospy.Subscriber(basename + "/sensors/mics",
-        #             Int16MultiArray, self.callback_mics, queue_size=1, tcp_nodelay=True)
-        self.sub_caml = rospy.Subscriber(base1 + "/sensors/caml/compressed",
-                    CompressedImage, self.callback_caml, queue_size=1, tcp_nodelay=True)
-        self.sub_camr = rospy.Subscriber(base1 + "/sensors/camr/compressed",
-                CompressedImage, self.callback_camr, queue_size=1, tcp_nodelay=True)
-
-        self.pub_kin.publish(self.kin)        
 
 
-        self.timer = rospy.Timer(rospy.Duration(0.1), self.random_move)
-        self.timer2 = rospy.Timer(rospy.Duration(0.1), self.camera_move)
+        self.timer = rospy.Timer(rospy.Duration(0.1), self.move_to_point)
+        # self.timer2 = rospy.Timer(rospy.Duration(0.1), self.camera_move)
+        
+        # plt.subplot(121)
+        self.display = plt.imshow(self.map, vmin=0,vmax=255)
+        plt.show()
 
 
     def callback_package(self, msg):
         self.input_package = msg
+        dist = self.input_package.sonar.range
+        if dist < 0.8 and dist > 0.1:
+            dist += 0.1
+            obj_vec = dist*np.array([np.cos(self.pos.theta),np.sin(self.pos.theta)])
+            pos_vec = np.array([self.pos.x,self.pos.y])
+            # print(obj_vec,pos_vec-obj_vec, self.pos2map(*(pos_vec-obj_vec)))
+            map_coords = self.pos2map(*(obj_vec+pos_vec))
+            print(map_coords, self.map_pos,dist)
+            self.map[max(map_coords[0]-1,0):min(map_coords[0]+1,self.map.shape[0]),max(map_coords[1]-1,0):min(map_coords[1]+1,self.map.shape[1])] = 0
+            self.map[max(map_coords[0]-1,0):min(map_coords[0]+1,self.map.shape[0]),max(map_coords[1]-1,0):min(map_coords[1]+1,self.map.shape[1])][:,:,2] = 255
+            if self.display is not None:
+                self.display.set_data(self.map)
+                plt.draw()
+        
+    def pos2map(self, posx, posy):
+        return np.array([self.map_start[0]+round((posx)*50),
+                self.map_start[1]+round((posy)*50)],dtype=int)
+        
+    def map2pos(self, mapx, mapy):
+        return np.array([(mapx-self.map_start[0])/50,
+                (mapy-self.map_start[1])/50])
         
     def callback_pose(self, pose):
         if pose is not None:
-            self.pos = pose
-        
-    def random_move(self, *args):
+            if self.start_pos is None:
+                self.start_pos = pose
+            self.pos.x = pose.x-self.start_pos.x
+            self.pos.y = pose.y-self.start_pos.y
+            self.pos.theta = pose.theta-self.start_pos.theta
+            self.map[max(self.map_pos[0]-2,0):min(self.map_pos[0]+2,self.map.shape[0]),max(self.map_pos[1]-2,0):min(self.map_pos[1]+2,self.map.shape[1])] = 255
+            self.map_pos = self.pos2map(self.pos.x, self.pos.y)
+            self.map[max(self.map_pos[0]-2,0):min(self.map_pos[0]+2,self.map.shape[0]),max(self.map_pos[1]-2,0):min(self.map_pos[1]+2,self.map.shape[1])] = 0
+            self.map[max(self.map_pos[0]-2,0):min(self.map_pos[0]+2,self.map.shape[0]),max(self.map_pos[1]-2,0):min(self.map_pos[1]+2,self.map.shape[1])][:,:,0] = 255
+            # self.map[*self.map_pos][2] = 0
+            # self.map[*self.map_pos][0] = 0
+            if self.display is not None:
+                self.display.set_data(self.map)
+                plt.draw()
+       
+    def move_to_point(self, *args):
         self.velocity.twist.linear.x = 0.2
         target = self.cur_target
-        target = np.array([0.5,-0.5])
+        # target_pos = np.array([0.5,-0.7])
+        target_pos = self.map2pos(150,90)
+        target = np.arctan2(target_pos[1]-self.pos.y,target_pos[0]-self.pos.x)
         dists = [(self.pos.theta%(2*np.pi)-target%(2*np.pi))%(2*np.pi),(target%(2*np.pi)-self.pos.theta%(2*np.pi))%(2*np.pi)]
-        if min(dists) < 0.5:
+        # print(dists, self.pos.x, self.pos.y)
+        if np.linalg.norm(target_pos-np.array([self.pos.x,self.pos.y])) < 0.1:
+            self.velocity.twist.angular.z = 0.0
+            self.velocity.twist.linear.x = 0.0
+        elif min(dists) < 0.1:
             self.velocity.twist.angular.z = 0.0
             self.pub_cmd_vel.publish(self.velocity)
         elif dists[0] >= dists[1]:
@@ -100,6 +132,10 @@ class Explore:
             self.velocity.twist.linear.x = 0.01
 
         self.pub_cmd_vel.publish(self.velocity)
+        
+    def loop(self):
+        self.pub_kin.publish(self.kin)        
+
         
 if __name__ == "__main__":
     try:
