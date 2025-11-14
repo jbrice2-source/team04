@@ -75,13 +75,13 @@
 
 		<include>
 			<uri>model://miro_model</uri>
-			<name>miro01</name>
-			<pose>1.2 -0.3 0.15 0 0 0</pose>
+			<name>miro02</name>
+			<pose>1.8 0.5	 0.15 0 0 0</pose>
 		</include>
 
 		<include>
 			<uri>model://miro_model</uri>
-			<name>miro02</name>
+			<name>miro01</name>
 			<pose>-1 0 0.15 0 0 0</pose>
 		</include>
 
