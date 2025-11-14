@@ -86,7 +86,7 @@ def func1(dataset,section):
         # cv2.imshow("lines", img1)
         # cv2.imshow("contoured", edges)
         mean = 0
-        stddev = 15
+        stddev = 30
         noise = np.zeros(img1.shape[:2], np.uint8)
         cv2.randn(noise, mean, stddev)
         noise = cv2.merge([noise,noise,noise])
@@ -108,3 +108,31 @@ def func1(dataset,section):
 
 func1(dataset[:len(dataset)*7//9],"train")
 func1(dataset[len(dataset)*7//9:],"test")
+
+
+background_images = glob("neg_dataset/*.png")
+random.shuffle(background_images)
+for i in background_images[:len(background_images)*7//9]:
+    img1 = cv2.imread(i)
+    filename = os.path.basename(i).split(".")[0]
+    mean = 0
+    stddev = 30
+    noise = np.zeros(img1.shape[:2], np.uint8)
+    cv2.randn(noise, mean, stddev)
+    noise = cv2.merge([noise,noise,noise])
+    # Add noise to image
+    print(noise.shape)
+    noisy_img = cv2.add(img1, noise)
+    cv2.imwrite(f"processed_dataset/train/images/{filename}.png", noisy_img)
+for i in background_images[len(background_images)*7//9:]:
+    img1 = cv2.imread(i)
+    filename = os.path.basename(i).split(".")[0]
+    mean = 0
+    stddev = 30
+    noise = np.zeros(img1.shape[:2], np.uint8)
+    cv2.randn(noise, mean, stddev)
+    noise = cv2.merge([noise,noise,noise])
+    # Add noise to image
+    print(noise.shape)
+    noisy_img = cv2.add(img1, noise)
+    cv2.imwrite(f"processed_dataset/train/images/{filename}.png", noisy_img)

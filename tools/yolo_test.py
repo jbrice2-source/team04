@@ -9,7 +9,7 @@ model = YOLO(model_file)
 import cv2
 
 image = cv2.imread("pictures/195_1.png")
-image = cv2.imread("MiRo Image Masking Dataset/Image/image1368.jpg")
+image = cv2.imread("MiRo Image Masking Dataset/Image/image668.jpg")
 
 # remember to convert it to RGB if using OpenCV
 rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
