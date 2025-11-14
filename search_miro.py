@@ -15,8 +15,10 @@ import math
 import heapq
 import miro2 as miro
 import time
+from math import pi
 from math import radians
-
+from tf.transformations import euler_from_quaternion
+from nav_msgs.msg import Odometry
 
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
 import matplotlib.pyplot as plt
@@ -36,7 +38,6 @@ class searchMiro:
         base1 = "/miro01"
         base2 = "/miro02"
         self.interface = miro.lib.RobotInterface
-
         self.velocity = TwistStamped()
         self.image_converter = CvBridge()
         self.camera = [None, None]
@@ -60,7 +61,8 @@ class searchMiro:
                     CompressedImage, self.callback_caml, queue_size=1, tcp_nodelay=True)
         self.sub_camr = rospy.Subscriber(base2 + "/sensors/camr/compressed",
                 CompressedImage, self.callback_camr, queue_size=1, tcp_nodelay=True)
-
+        self.currentAngle = None
+        self.currentPos = None
     #Adds values to the 2D array for a cylinder obstical
     def addCylinder(self,grid,x,y):
         for i in range (x - 1, x + 3):
@@ -82,7 +84,8 @@ class searchMiro:
             
             grid = [['.' for _ in range(cols)] for _ in range(rows)]
             grid = self.addMiros(grid,goal[0],goal[1],start[0],start[1])
-            grid = self.addCylinder(grid,18,13)
+            grid = self.addCylinder(grid,18,13)#
+            grid = self.addCylinder(grid,29,13)
             for row in grid:
                 print(' '.join(row))
             return grid
@@ -110,14 +113,14 @@ class searchMiro:
         row = goal[0]
         col = goal[1]
         dirMap = {
-            (-1,0): ('F',360),
-            (-1,1): ('FR',45),
-            (0,1): ('R',90),
-            (1,1): ('DR',135),
-            (1,0): ('D',180),
-            (1,-1): ('DL',225),
-            (0,-1): ('L',270),
-            (-1,-1): ('FL',315)
+            (-1,0): ((-0.1,0),radians(360)),
+            (-1,1): ((-0.1,-0.1),radians(45)),
+            (0,1): ((0,0.1),radians(90)),
+            (1,1): ((0.1,0.1),radians(135)),
+            (1,0): ((0.1,0),radians(180)),
+            (1,-1): ((0.1,-0.1),radians(225)),
+            (0,-1): ((0,-0.1),radians(270)),
+            (-1,-1): ((-0.1,-0.1),radians(315))
         }
         while not (cellDetails[row][col].parent_x == row and cellDetails[row][col].parent_y == col):      
             tempRow = cellDetails[row][col].parent_x
@@ -195,7 +198,7 @@ class searchMiro:
     def callback_pose(self, pose):
         if pose != None:
             self.pos = pose
-
+            self.currentAngle = self.pos.theta
 
     def callback_cam(self, ros_image, index):
             
@@ -226,40 +229,48 @@ class searchMiro:
     def callback_camr(self, ros_image):
         self.callback_cam(ros_image,1)
 
-
     def move(self,path):
         rate = rospy.Rate(10)
-        currentMove = ("F",0)
         for move in path:
-            if not currentMove == move:
-                self.velocity.twist.linear.x = 0
-                time.sleep(1)
-                turningAngle = ((move[1] - currentMove[1])**2)**0.5
-                if turningAngle > 180:
-                    turningAngle = ((turningAngle - 360)**2)**0.5
-                    turningDirection =  1
-                    print(f"turning counterclockwise {turningAngle} degrees")
+            currentAngle = self.currentAngle
+            print(move)
+            #if change in angle turn
+            print("waiting")
+            self.velocity.twist.linear.x = 0
+            self.velocity.twist.angular.z = 0
+            self.pub_cmd_vel.publish(self.velocity)
+            invert_move = -move[1]
+            # time.sleep(1)
+            dists = [(self.pos.theta%(2*np.pi)-invert_move%(2*np.pi))%(2*np.pi),(invert_move%(2*np.pi)-self.pos.theta%(2*np.pi))%(2*np.pi)]
+
+            self.velocity.twist.linear.x = 0.0
+            self.velocity.twist.angular.z = 0.0
+            self.pub_cmd_vel.publish(self.velocity)
+            # time.sleep(0.1)
+            #move forward
+            newpos = np.array([self.pos.x - move[0][0],self.pos.y - move[0][1]])
+            cur_pos = np.array([self.pos.x,self.pos.y])
+            while np.linalg.norm(newpos-cur_pos) > 0.01:
+                print(f"{np.linalg.norm(newpos-cur_pos)}")
+                cur_pos = np.array([self.pos.x,self.pos.y])
+                angle = np.arctan2(*(cur_pos-newpos))
+                dists = [(self.pos.theta%(2*np.pi)-invert_move%(2*np.pi))%(2*np.pi),(invert_move%(2*np.pi)-self.pos.theta%(2*np.pi))%(2*np.pi)]
+                # print(self.pos.theta,move)
+                if min(dists) < 0.1:
+                    self.velocity.twist.linear.x = 0.1
+                    self.velocity.twist.angular.z = 0.0
+                    self.pub_cmd_vel.publish(self.velocity)                
+                elif dists[0] > dists[1]:
+                    self.velocity.twist.angular.z = 1
+
                 else:
-                    turningDirection = -1
-                    print(f"turning clockwise {turningAngle} degrees")
-                duration = (turningAngle) /45
-                self.velocity.twist.angular.z = turningDirection * 2
-                print(f" for {duration} seconds")
-            else:
-                if currentMove[0] in ['FL','FR','DL','DR']:
-                    duration = 2**0.5
-                else:
-                    duration = 0.5
-                self.velocity.twist.angular.z = 0
-                self.velocity.twist.linear.x = 0.5
-                print(f"moving forward for {duration} seconds")
-            for _ in range(int(duration*10)):
+                    self.velocity.twist.angular.z = -1
                 self.pub_cmd_vel.publish(self.velocity)
-                rate.sleep()
-            currentMove = move
+
         self.velocity.twist.linear.x = 0
         self.velocity.twist.angular.z = 0
         self.pub_cmd_vel.publish(self.velocity)
+
 #check for lost miro periodically
 
 #if found navigate there
@@ -274,14 +285,24 @@ if __name__ == "__main__":
     try:
         rospy.init_node("search_miro")
         robot = searchMiro()
+        while robot.currentAngle is None:
+            print("Waiting for first angle reading…")
+
+        rospy.spin
         width  = 39
         height = 26
         start = (10,13)
-        goal = (32,10)
+        goal = (37,18)
         grid = robot.generateGrid(start,goal,width,height)
         path = robot.aStarSearch(grid,start,goal,width,height)
         robot.move(path)
         robot.interface.disconnect()
-        exit()
+    except KeyboardInterrupt:
+        print("\nExecution ending (Ctrl+C)=")
+        # try:
+        #     robot.interface.disconnect()
+        # except:
+        #     pass
     except Exception as e:
         print("exception",e)
+    robot.interface.disconnect()
