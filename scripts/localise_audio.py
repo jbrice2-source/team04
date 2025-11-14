@@ -4,6 +4,7 @@ import rospy
 import numpy as np
 from std_msgs.msg import Int16MultiArray, Float32, Float32MultiArray
 import miro2
+import matplotlib.pyplot as plt
 
 # GCC phat algorithm to compute difference in arrival time of sound for localisation
 # takes left and right audio signals as input
@@ -25,6 +26,12 @@ def gcc_phat(sig, refsig, fs=20000, max_tau=None, interp=1):
     return tau
 past_angles = np.zeros(30,dtype=float)
 
+# data -> input audio data, edges -> freq edges e.g. [50, 100](hz)
+def bandpass(data: np.ndarray, edges: list[float], sample_rate: float, poles: int = 5):
+    sos = scipy.signal.butter(poles, edges, 'bandpass', fs=sample_rate, output='sos')
+    filtered_data = scipy.signal.sosfiltfilt(sos, data)
+    return filtered_data
+
 cur_angle = 0.0
 def audio_callback(msg):
     global past_angles, cos_joints, pub_cos, cur_angle
@@ -34,6 +41,21 @@ def audio_callback(msg):
     # frames = data.reshape(-1, 4)
     
     data = np.asarray(msg.data)
+    data_bandpassed = bandpass(data, [800, 1000], 20000.0)
+    plt.figure(figsize=(12, 5))
+    t = np.arange(len(raw)) / fs
+
+    plt.plot(t, raw, label="Raw audio", alpha=0.6)
+    plt.plot(t, filtered, label="Bandpassed (800–1000 Hz)", alpha=0.8)
+
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    plt.title("Microphone Data: Raw vs Bandpassed")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    
     data = np.transpose(data.reshape((4, 500)))
     data = np.flipud(data)
     frames = data
