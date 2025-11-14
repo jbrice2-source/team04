@@ -22,7 +22,15 @@ def make_sound():
     # create and send tone command
     msg = UInt16MultiArray()
     # [frequency (Hz), volume (0–255), duration (ms)]
-    msg.data = [900, 128, 1000]   
+    msg.data = [900, 128, 20]  
+    rospy.loginfo("playing 900 Hz tone for 1 second.")
+    pub.publish(msg)
+    rospy.sleep(0.1)
+    msg.data = [950, 128, 20]  
+    rospy.loginfo("playing 900 Hz tone for 1 second.")
+    pub.publish(msg)
+    rospy.sleep(0.1)
+    msg.data = [1000, 128, 20]  
     rospy.loginfo("playing 900 Hz tone for 1 second.")
     pub.publish(msg)
 
