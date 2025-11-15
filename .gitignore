@@ -1,2 +1,3 @@
 processed_dataset/*
 mask_dataset/*
+classifier_dataset/*
