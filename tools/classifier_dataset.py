@@ -20,7 +20,7 @@ def func1(dataset,section):
         img1 = cv2.cvtColor(img1,cv2.COLOR_BGR2RGB)
         # blur = cv2.bilateralFilter(img1, 9, 75,75)
         # cv2.imshow("bilatteral filter", blur)
-        angle_classes = ["345_15","15_45","45_75","75_105","135_165","165_195","195_225","225_255","255_285","315_345"]
+        angle_classes = ["345_15","15_45","45_75","75_105", "105_135","135_165","165_195","195_225","225_255","255_285","285_315","315_345"]
 
         if not os.path.isdir("classifier_dataset"):
             os.mkdir("classifier_dataset")
@@ -40,7 +40,7 @@ def func1(dataset,section):
         # cv2.imshow("lines", img1)
         # cv2.imshow("contoured", edges)
         mean = 0
-        stddev = 30
+        stddev = 10
         noise = np.zeros(img1.shape[:2], np.uint8)
         cv2.randn(noise, mean, stddev)
         noise = cv2.merge([noise,noise,noise])
@@ -50,7 +50,7 @@ def func1(dataset,section):
         
         # Get the image size (number of pixels in the image).
         img_size = noisy_img.size
-        noise_percentage = 0.05  # Setting to 10%
+        noise_percentage = 0.02  # Setting to 10%
         noise_size = int(noise_percentage*img_size)
         random_indices = np.random.choice(img_size, noise_size)
         img_noised = noisy_img.copy()
@@ -73,7 +73,7 @@ for i in background_images[:len(background_images)*8//10]:
     img1 = cv2.imread(i, cv2.IMREAD_COLOR_RGB)
     filename = os.path.basename(i).split(".")[0]
     mean = 0
-    stddev = 30
+    stddev = 10
     noise = np.zeros(img1.shape[:2], np.uint8)
     cv2.randn(noise, mean, stddev)
     noise = cv2.merge([noise,noise,noise])
@@ -81,7 +81,7 @@ for i in background_images[:len(background_images)*8//10]:
     noisy_img = cv2.add(img1, noise)
     # Get the image size (number of pixels in the image).
     img_size = noisy_img.size
-    noise_percentage = 0.05  # Setting to 10%
+    noise_percentage = 0.02  # Setting to 10%
     noise_size = int(noise_percentage*img_size)
     random_indices = np.random.choice(img_size, noise_size)
     img_noised = noisy_img.copy()
@@ -92,7 +92,7 @@ for i in background_images[len(background_images)*8//10:]:
     img1 = cv2.imread(i, cv2.IMREAD_COLOR_RGB)
     filename = os.path.basename(i).split(".")[0]
     mean = 0
-    stddev = 30
+    stddev = 10
     noise = np.zeros(img1.shape[:2], np.uint8)
     cv2.randn(noise, mean, stddev)
     noise = cv2.merge([noise,noise,noise])
@@ -100,7 +100,7 @@ for i in background_images[len(background_images)*8//10:]:
     noisy_img = cv2.add(img1, noise)
     # Get the image size (number of pixels in the image).
     img_size = noisy_img.size
-    noise_percentage = 0.05  # Setting to 10%
+    noise_percentage = 0.02  # Setting to 10%
     noise_size = int(noise_percentage*img_size)
     random_indices = np.random.choice(img_size, noise_size)
     img_noised = noisy_img.copy()
