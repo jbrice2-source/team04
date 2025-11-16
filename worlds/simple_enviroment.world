@@ -85,10 +85,10 @@
 			<pose>1.2 -0.3 0.15 0 0 0</pose>
 		</include>
 	
-		<include>
-			<uri>model://miro_pillar</uri>
+		<!-- <include>
+			<uri>model://miro_can</uri>
 			<pose>-0.2 0 0.15 0 0 0</pose>
-		</include>
+		</include> -->
 
 		<gravity>0 0 -9.8</gravity>
 		<magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
@@ -112,4 +112,3 @@
 
 	</world>
 </sdf>
-

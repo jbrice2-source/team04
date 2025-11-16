@@ -130,6 +130,7 @@ class TakeImages:
             self.time1 = time.time_ns()
         else:
             self.add_dist = 0.0
+            np.arctan2(self.pos.x-xcord,self.pos.y-ycord)
             target = self.cur_target
             dists = [(self.pos.theta%(2*np.pi)-target%(2*np.pi))%(2*np.pi),(target%(2*np.pi)-self.pos.theta%(2*np.pi))%(2*np.pi)]
             if min(dists) < 0.5:
