@@ -4,5 +4,5 @@ from ultralytics import YOLO
 model = YOLO("yolo11s.pt")
 
 # Train the model
-results = model.train(data="/home/hancom/miro-docker/team04/detection_yolo.yaml", device="cuda", epochs=1, imgsz=480,
-                                hsv_v=0.7, degrees=30, translate=0.2, scale=0.6,shear=5, perspective=0.0002, cutmix=0.1)
+results = model.train(data="/home/hancom/miro-docker/team04/detection_yolo.yaml", device="cuda", cache=True, batch=-1, epochs=300, imgsz=640,
+                                hsv_v=0.7, degrees=40, translate=0.2, scale=0.6,shear=5, perspective=0.0003, cutmix=0.1)

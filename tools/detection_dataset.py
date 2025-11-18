@@ -59,9 +59,6 @@ for n in images[:8*len(images)//10]:
     else:
         cv2.imwrite(f"detection_dataset/train/images/{img_name}.jpg", image)
         
-        with open(f"detection_dataset/train/labels/{img_name}.txt","w") as file:
-            file.write("")
-        
         
 for n in images[8*len(images)//10:]:
     img_name = os.path.basename(n).split(".")[0]
@@ -97,8 +94,5 @@ for n in images[8*len(images)//10:]:
             file.write(f"0 {centre[0]/img_width} {centre[1]/img_height} {width/img_width} {height/img_height}")
     else:
         cv2.imwrite(f"detection_dataset/test/images/{img_name}.jpg", image)
-        
-        with open(f"detection_dataset/test/labels/{img_name}.txt","w") as file:
-            file.write("")
         
 
