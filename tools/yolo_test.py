@@ -3,13 +3,16 @@ import numpy as np
 from glob import glob
 
 # Load the best model we have so far:
-model_file = "runs/detect/train12/weights/best.pt"
+model_file = "runs/detect/train31/weights/last.pt"
 model = YOLO(model_file)
 
 
 import cv2
 
-for n in glob("pictures/*.png"):
+real_images = glob("MiRo Image Masking Dataset/image_2/*")[1060:1090]
+simulated_images = glob("dataset/*")[1060:1090]
+
+for n in simulated_images:
     image = cv2.imread(n)
     # image = cv2.imread("MiRo Image Masking Dataset/Image/image690.jpg")
 
@@ -51,8 +54,11 @@ for n in glob("pictures/*.png"):
     # predict returns a list of Results object. 
     # Since we are running on a single image, we'll take the only one result
     results = model.predict(rgb)[0]
-
-    img2 = plot_bboxes(results)
-    cv2.imshow('img', img2)
+    print(results.boxes.conf.cpu().numpy())
+    if len(results.boxes.cls.cpu().numpy()) > 0:
+        img2 = plot_bboxes(results)
+        cv2.imshow('img', img2)
+    else:
+        cv2.imshow('img', image)
     cv2.waitKey(0)
 cv2.destroyAllWindows()
