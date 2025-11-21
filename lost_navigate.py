@@ -33,7 +33,7 @@ class lostMiro:
         self.interface = miro.lib.RobotInterface
         self.velocity = TwistStamped()
         self.pos = Pose2D()
-        self.soundHeard = True
+        self.soundHeard = False
         self.currentInstruction = ""
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
         self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
@@ -51,32 +51,33 @@ class lostMiro:
             self.pos = pose
             self.currentAngle = self.pos.theta
 
-    def audio_callback(msg):
+    def audio_callback(self,msg):
         audio = np.asarray(msg.data)
         #if 1000 - 1400hz:
         if np.any((robot.bandpass(audio, [1000, 1400], 20000.0))):
             rospy.loginfo("1000-1400 Hz frequency detected in audio input.")
             rospy.loginfo("Turning left")
+            self.soundHeard = True
         #if 1500 - 1900hz:
         if np.any((robot.bandpass(audio, [1500, 1900], 20000.0))):
             rospy.loginfo("1500-1900 Hz frequency detected in audio input.")
             rospy.loginfo("Turning right")
-
+            self.soundHeard = True
         #if 2000 - 2400hz:
         if np.any((robot.bandpass(audio, [2000, 2400], 20000.0))):
             rospy.loginfo("2000-2400 Hz frequency detected in audio input.")
             rospy.loginfo("Moving forward")
-
+            self.soundHeard = True
         #if 2500 - 2900hz:
         if np.any((robot.bandpass(audio, [2500, 2900], 20000.0))):
             rospy.loginfo("2500-2900 Hz frequency detected in audio input.")
             rospy.loginfo("Moving backwards")
-
+            self.soundHeard = True
         #if 3000hz - 3400hz:
         if np.any((robot.bandpass(audio, [3000, 3400], 20000.0))):
             rospy.loginfo("3000-3400 Hz frequency detected in audio input.")
             rospy.loginfo("Stopping")
-
+            self.soundHeard = True
     def interpret_sound(self):
         self.currentDirection = ((0,-0.1),radians(90))
     
@@ -123,6 +124,7 @@ if __name__ == "__main__":
                 #move
             robot.interpret_sound()
             robot.execute_movement()
+            robot.soundHeard = False
 
             
     except KeyboardInterrupt:
