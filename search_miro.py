@@ -52,15 +52,10 @@ class searchMiro:
         #Publisherz
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
         self.pub_cos = rospy.Publisher(base1 + "/control/cosmetic_joints", Float32MultiArray, queue_size=0)
-        self.pub_kin = rospy.Publisher(base2 + "/control/kinematic_joints", JointState, queue_size=0)
 
         #Subscribers
         self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
             Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
-        self.sub_caml = rospy.Subscriber(base2 + "/sensors/caml/compressed",
-                    CompressedImage, self.callback_caml, queue_size=1, tcp_nodelay=True)
-        self.sub_camr = rospy.Subscriber(base2 + "/sensors/camr/compressed",
-                CompressedImage, self.callback_camr, queue_size=1, tcp_nodelay=True)
         self.currentAngle = None
         self.currentPos = None
     #Adds values to the 2D array for a cylinder obstical
@@ -68,7 +63,7 @@ class searchMiro:
         for i in range (x - 1, x + 3):
             for j in range (y - 1, y + 3):
                 grid[i][j] = 'C'
-        
+            
         return grid
 
     #Adds values to the 2D array for the lost and seeking miros
@@ -234,7 +229,6 @@ class searchMiro:
         for move in path:
             currentAngle = self.currentAngle
             print(move)
-            #if change in angle turn
             print("waiting")
             self.velocity.twist.linear.x = 0
             self.velocity.twist.angular.z = 0

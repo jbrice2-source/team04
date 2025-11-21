@@ -33,7 +33,11 @@ class lostMiro:
         self.interface = miro.lib.RobotInterface
         self.velocity = TwistStamped()
         self.pos = Pose2D()
+<<<<<<< HEAD
         self.soundHeard = False
+=======
+        self.soundHeard = True
+>>>>>>> main
         self.currentInstruction = ""
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
         self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
