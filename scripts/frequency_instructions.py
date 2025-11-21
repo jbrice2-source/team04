@@ -20,10 +20,10 @@ def audio_callback(msg):
     print(f"900-1100 MAX {np.max(bandpass(audio, [900, 1100], 20000.0))}")
     print(f"1400-1600 MAX {np.max(bandpass(audio, [1400, 1600], 20000.0))}")
     print(f"1900-2100 MAX {np.max(bandpass(audio, [1900, 2100], 20000.0))}")
-    print(f"2400-2600 MAX {np.max(bandpass(audio, [3000, 3400], 20000.0))}")
-    print(f"2900-3100 MAX {np.max(bandpass(audio, [3000, 3400], 20000.0))}")
-    print(f"3400-3600 MAX {np.max(bandpass(audio, [3000, 3400], 20000.0))}")
-    print(f"3900-4100 MAX {np.max(bandpass(audio, [3000, 3400], 20000.0))}")
+    print(f"2400-2600 MAX {np.max(bandpass(audio, [2400, 2600], 20000.0))}")
+    print(f"2900-3100 MAX {np.max(bandpass(audio, [2900, 3100], 20000.0))}")
+    print(f"3400-3600 MAX {np.max(bandpass(audio, [3400, 3600], 20000.0))}")
+    print(f"3900-4100 MAX {np.max(bandpass(audio, [3900, 4100], 20000.0))}")
 
     # if 1000 - 1400hz:
     if np.max(bandpass(audio, [400, 600], 20000.0)) > 700:
