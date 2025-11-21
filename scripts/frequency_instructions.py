@@ -13,35 +13,30 @@ def bandpass(data, edges, sample_rate: float, poles: int = 5):
 def audio_callback(msg):    
     audio = np.asarray(msg.data)
     
-    # if 400 - 600hz:
-    if np.any((bandpass(audio, [400, 600], 20000.0))):
-        rospy.loginfo("400-600 Hz frequency detected in audio input.")
+    # if 1000 - 1400hz:
+    if np.any((bandpass(audio, [1000, 1400], 20000.0))):
+        rospy.loginfo("1000-1400 Hz frequency detected in audio input.")
         rospy.loginfo("Turning left")
-        make_sound()
         
-    # if 700 - 900hz:
-    if np.any((bandpass(audio, [700, 900], 20000.0))):
-        rospy.loginfo("400-600 Hz frequency detected in audio input.")
+    # if 1500 - 1900hz:
+    if np.any((bandpass(audio, [1500, 1900], 20000.0))):
+        rospy.loginfo("1500-1900 Hz frequency detected in audio input.")
         rospy.loginfo("Turning right")
-        make_sound()
         
-    # if 1000 - 1200hz:
-    if np.any((bandpass(audio, [1000, 1200], 20000.0))):
-        rospy.loginfo("1000-1200 Hz frequency detected in audio input.")
+    # if 2000 - 2400hz:
+    if np.any((bandpass(audio, [2000, 2400], 20000.0))):
+        rospy.loginfo("2000-2400 Hz frequency detected in audio input.")
         rospy.loginfo("Moving forward")
-        make_sound()
         
-    # if 1300 - 1500hz:
-    if np.any((bandpass(audio, [1300, 1500], 20000.0))):
-        rospy.loginfo("1300-1500 Hz frequency detected in audio input.")
+    # if 2500 - 2900hz:
+    if np.any((bandpass(audio, [2500, 2900], 20000.0))):
+        rospy.loginfo("2500-2900 Hz frequency detected in audio input.")
         rospy.loginfo("Moving backwards")
-        make_sound()
         
-    # if 1600hz - 1800hz:
-    if np.any((bandpass(audio, [1600, 1800], 20000.0))):
-        rospy.loginfo("1600-1800 Hz frequency detected in audio input.")
+    # if 3000hz - 3400hz:
+    if np.any((bandpass(audio, [3000, 3400], 20000.0))):
+        rospy.loginfo("3000-3400 Hz frequency detected in audio input.")
         rospy.loginfo("Stopping")
-        make_sound()
 
 def make_sound():
     # get robot name
