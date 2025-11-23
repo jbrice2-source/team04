@@ -3,7 +3,7 @@ import os
 import rospy
 import numpy as np
 import scipy.signal
-from std_msgs.msg import Int16MultiArray, Float32, Float32MultiArray
+from std_msgs.msg import UInt16MultiArray, Float32, Float32MultiArray, Int16MultiArray
 
 def bandpass(data, edges, sample_rate: float, poles: int = 5):
     sos = scipy.signal.butter(poles, edges, 'bandpass', fs=sample_rate, output='sos')
@@ -17,31 +17,27 @@ def audio_callback(msg):
     if np.any((bandpass(audio, [400, 600], 20000.0))):
         rospy.loginfo("400-600 Hz frequency detected in audio input.")
         rospy.loginfo("Turning left")
-        make_sound()
         
     # if 700 - 900hz:
     if np.any((bandpass(audio, [700, 900], 20000.0))):
         rospy.loginfo("400-600 Hz frequency detected in audio input.")
         rospy.loginfo("Turning right")
-        make_sound()
         
     # if 1000 - 1200hz:
     if np.any((bandpass(audio, [1000, 1200], 20000.0))):
         rospy.loginfo("1000-1200 Hz frequency detected in audio input.")
         rospy.loginfo("Moving forward")
-        make_sound()
         
     # if 1300 - 1500hz:
     if np.any((bandpass(audio, [1300, 1500], 20000.0))):
         rospy.loginfo("1300-1500 Hz frequency detected in audio input.")
         rospy.loginfo("Moving backwards")
-        make_sound()
         
     # if 1600hz - 1800hz:
     if np.any((bandpass(audio, [1600, 1800], 20000.0))):
         rospy.loginfo("1600-1800 Hz frequency detected in audio input.")
         rospy.loginfo("Stopping")
-        make_sound()
+    rospy.sleep(0.6)
 
 def make_sound():
     # get robot name
