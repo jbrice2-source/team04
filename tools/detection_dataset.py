@@ -31,8 +31,8 @@ for i in images_classes:
         img_name = os.path.basename(n).split(".")[0]
         print(img_name, count)
         count += 1
-        image = cv2.imread(f"MiRo Image Masking Dataset/Image/{img_name}.jpg",cv2.IMREAD_COLOR_RGB)
-        mask = cv2.imread(f"MiRo Image Masking Dataset/Mask_2/{img_name}.png",cv2.IMREAD_GRAYSCALE)
+        image = cv2.imread(f"Labelled_dataset/Image/{class_name}/{img_name}.jpg",cv2.IMREAD_COLOR_RGB)
+        mask = cv2.imread(f"Labelled_dataset/Mask_2/{img_name}.png",cv2.IMREAD_GRAYSCALE)
 
         kernel = np.ones((5,5))
         smooth = cv2.dilate(mask, kernel,iterations=2)
@@ -66,8 +66,8 @@ for i in images_classes:
         #     mask = cv2.imread(f"MiRo Image Masking Dataset/Mask_3/{img_name}.png",cv2.IMREAD_GRAYSCALE)
         #     img_name = "2"+img_name
         # else:
-        image = cv2.imread(f"MiRo Image Masking Dataset/Image/{img_name}.jpg",cv2.IMREAD_COLOR_RGB)
-        mask = cv2.imread(f"MiRo Image Masking Dataset/Mask_2/{img_name}.png",cv2.IMREAD_GRAYSCALE)
+        image = cv2.imread(f"Labelled_dataset/Image/{class_name}/{img_name}.jpg",cv2.IMREAD_COLOR_RGB)
+        mask = cv2.imread(f"Labelled_dataset/Mask_2/{img_name}.png",cv2.IMREAD_GRAYSCALE)
 
 
         # kernel = np.ones((5,5))

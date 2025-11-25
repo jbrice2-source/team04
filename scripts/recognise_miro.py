@@ -21,19 +21,6 @@ from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCan
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
  
-MIN_MATCH_COUNT = 10
-images = glob("cropped_pictures/*.png")
-
-image_data = np.empty_like(images,dtype=tuple)
-
-# Initiate SIFT detector
-sift = cv2.SIFT_create()
-for i,n in enumerate(images):
-    img1 = cv2.imread(n, cv2.IMREAD_GRAYSCALE)          # queryImage
-    kp1, des1 = sift.detectAndCompute(img1,None)
-    image_data[i] = (img1,kp1,des1)
-
-
 class LookMiro:
     
     def __init__(self):

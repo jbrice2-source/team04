@@ -2,23 +2,13 @@ import onnxruntime as ort
 import cv2
 import numpy as np
 
-mode_path = "best.onnx"
+mode_path = "best_new.onnx"
 onnx_model = ort.InferenceSession(mode_path)
 
 classes = ["0","45","90","135","180","225","270","315"]
     
 
 def letterbox(img: np.ndarray, new_shape: tuple[int, int] = (640, 640)) -> tuple[np.ndarray, tuple[int, int]]:
-    """Resize and reshape images while maintaining aspect ratio by adding padding.
-
-    Args:
-        img (np.ndarray): Input image to be resized.
-        new_shape (tuple[int, int]): Target shape (height, width) for the image.
-
-    Returns:
-        img (np.ndarray): Resized and padded image.
-        pad (tuple[int, int]): Padding values (top, left) applied to the image.
-    """
     shape = img.shape[:2]  # current shape [height, width]
 
     # Scale ratio (new / old)
@@ -40,7 +30,7 @@ def letterbox(img: np.ndarray, new_shape: tuple[int, int] = (640, 640)) -> tuple
     
 # image = cv2.imread("image.png")
 # image = cv2.imread("Labelled_dataset/Image/135/image192.jpg")
-image = cv2.imread("IMG_20251121_180015.jpg")
+image = cv2.imread("detection_dataset/train/images/image41.jpg")
 
 
 img_height, img_width = image.shape[:2]
@@ -66,37 +56,23 @@ results = results.transpose()
 print(results.shape)
 
 
-def filter_Detections(results, thresh = 0.001):
-    # if model is trained on 1 class only
-    if len(results[0]) == 5:
-        # filter out the detections with confidence > thresh
-        considerable_detections = [detection for detection in results if detection[4] > thresh]
-        considerable_detections = np.array(considerable_detections)
-        return considerable_detections
+def filter_Detections(results, thresh = 0.4):
+    A = []
+    for detection in results:
+        class_id = detection[4:].argmax()
+        confidence_score = np.sum(detection[4:])
+        if confidence_score > thresh:
+            print(detection[4:])
+        new_detection = np.append(detection[:4],[class_id,confidence_score])
 
-    # if model is trained on multiple classes
-    else:
-        A = []
-        for detection in results:
+        A.append(new_detection)
 
-            class_id = detection[4:].argmax()
-            
-            confidence_score = np.sum(detection[4:])
-
-            if confidence_score > thresh:
-                print(detection[4:])
-
-
-            new_detection = np.append(detection[:4],[class_id,confidence_score])
-
-            A.append(new_detection)
-
-        A = np.array(A)
-        # filter out the detections with confidence > thresh
-        considerable_detections = [detection for detection in A if detection[-1] > thresh]
-        considerable_detections = np.array(considerable_detections)
-        # print(considerable_detections[:,-1])
-        return considerable_detections
+    A = np.array(A)
+    # filter out the detections with confidence > thresh
+    considerable_detections = [detection for detection in A if detection[-1] > thresh]
+    considerable_detections = np.array(considerable_detections)
+    # print(considerable_detections[:,-1])
+    return considerable_detections
     
 results = filter_Detections(results)
 
@@ -185,7 +161,6 @@ rescaled_results, confidences = rescale_back(results, img_width, img_height)
 
 
 for res, conf in zip(rescaled_results, confidences):
-
     x1,y1,x2,y2, cls_id = res
     cls_id = int(cls_id)
     x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
@@ -196,7 +171,7 @@ for res, conf in zip(rescaled_results, confidences):
                 cv2.FONT_HERSHEY_SIMPLEX,0.7,(255,0,0),1)
 
 print(confidences)
-# image = cv2.resize(image, (640, 640))
+# image = cv2.resize(image, (640, 320))
 
 cv2.imshow("Output", image)
 cv2.waitKey(0)

@@ -1,8 +1,8 @@
 from ultralytics import YOLO
 
 # Load a pretrained YOLO11 segment model
-model = YOLO("runs/detect/train29/weights/last.pt")
+model = YOLO("runs/detect/train41/weights/last.pt")
 
 # Train the model
-results = model.train(data="/home/hancom/miro-docker/team04/detection_yolo.yaml", device="cuda", cache=True, batch=24, epochs=600, imgsz=640,
-                                hsv_v=0.7, degrees=40, translate=0.2, scale=0.6,shear=5, perspective=0.0002, cutmix=0.1)
+results = model.train(data="/home/hancom/miro-docker/team04/detection_yolo.yaml", device="cuda", cache=True, batch=16, epochs=100, imgsz=640,
+                                hsv_v=0.7, degrees=50, translate=0.4, scale=0.8, fliplr=0.0,shear=10, perspective=0.0004, cutmix=0.5)
