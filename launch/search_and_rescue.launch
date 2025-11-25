@@ -1,0 +1,10 @@
+<launch>
+
+    <!-- Always-on audio detector -->
+    <node pkg="team04"
+          type="detect_wolf_howl_event.py"
+          name="audio_detector"
+          output="screen"
+          respawn="true" />
+
+</launch>

@@ -11,37 +11,63 @@ def bandpass(data, edges, sample_rate: float, poles: int = 5):
     return filtered_data
 
 def audio_callback(msg):    
+    rospy.sleep(0.4)
     audio = np.asarray(msg.data)
-    
-    # if 400 - 600hz:
-    if np.any((bandpass(audio, [400, 600], 20000.0))):
+    print(audio.shape)
+    # separate left and right channels
+
+    print(f"400-600 MAX {np.max(bandpass(audio, [400, 600], 20000.0))}")
+    print(f"900-1100 MAX {np.max(bandpass(audio, [900, 1100], 20000.0))}")
+    print(f"1400-1600 MAX {np.max(bandpass(audio, [1400, 1600], 20000.0))}")
+    print(f"1900-2100 MAX {np.max(bandpass(audio, [1900, 2100], 20000.0))}")
+    print(f"2400-2600 MAX {np.max(bandpass(audio, [2400, 2600], 20000.0))}")
+    print(f"2900-3100 MAX {np.max(bandpass(audio, [2900, 3100], 20000.0))}")
+    print(f"3400-3600 MAX {np.max(bandpass(audio, [3400, 3600], 20000.0))}")
+    print(f"3900-4100 MAX {np.max(bandpass(audio, [3900, 4100], 20000.0))}")
+
+    # if 1000 - 1400hz:
+    if np.max(bandpass(audio, [400, 600], 20000.0)) > 700:
         rospy.loginfo("400-600 Hz frequency detected in audio input.")
         rospy.loginfo("Turning left")
-        make_sound()
         
-    # if 700 - 900hz:
-    if np.any((bandpass(audio, [700, 900], 20000.0))):
-        rospy.loginfo("400-600 Hz frequency detected in audio input.")
+    # if 1500 - 1900hz:
+    if np.max(bandpass(audio, [900, 1100], 20000.0)) > 700:
+        rospy.loginfo("900-1100 Hz frequency detected in audio input.")
         rospy.loginfo("Turning right")
-        make_sound()
         
-    # if 1000 - 1200hz:
-    if np.any((bandpass(audio, [1000, 1200], 20000.0))):
-        rospy.loginfo("1000-1200 Hz frequency detected in audio input.")
+    # if 2000 - 2400hz:
+    if np.max(bandpass(audio, [1400, 1600], 20000.0)) > 700:
+        rospy.loginfo("1400 - 1600 Hz frequency detected in audio input.")
         rospy.loginfo("Moving forward")
-        make_sound()
         
-    # if 1300 - 1500hz:
-    if np.any((bandpass(audio, [1300, 1500], 20000.0))):
-        rospy.loginfo("1300-1500 Hz frequency detected in audio input.")
+    # if 2500 - 2900hz: 
+    if np.max(bandpass(audio, [1900, 2100], 20000.0)) > 700:
+        rospy.loginfo("1900-2100 Hz frequency detected in audio input.")
         rospy.loginfo("Moving backwards")
-        make_sound()
         
-    # if 1600hz - 1800hz:
-    if np.any((bandpass(audio, [1600, 1800], 20000.0))):
-        rospy.loginfo("1600-1800 Hz frequency detected in audio input.")
+    # if 3000hz - 3400hz:
+    if np.max(bandpass(audio, [2400, 2600], 20000.0)) > 700:
+        rospy.loginfo("2400-2600 Hz frequency detected in audio input.")
         rospy.loginfo("Stopping")
-        make_sound()
+
+    # if 2000 - 2400hz:
+    if np.max(bandpass(audio, [2900, 3100], 20000.0)) > 700:
+        rospy.loginfo("2900-3100 Hz frequency detected in audio input.")
+        rospy.loginfo("Moving forward")
+        
+    # if 2500 - 2900hz:     
+    if np.max(bandpass(audio, [3400, 3600], 20000.0)) > 700:
+        rospy.loginfo("3400-3600 Hz frequency detected in audio input.")
+        rospy.loginfo("Moving backwards")
+        
+    # if 3000hz - 3400hz:
+    if np.max(bandpass(audio, [3900, 4100], 20000.0)) > 700:
+        rospy.loginfo("3900-4100 Hz frequency detected in audio input.")
+        rospy.loginfo("Stopping")
+
+
+    else: print("no audio found")
+    
 
 def make_sound():
     # get robot name
@@ -70,5 +96,5 @@ if __name__ == '__main__':
     # subscribe to microphone audio data
     mic_topic = f"/{robot_name}/sensors/mics"
     rospy.Subscriber(mic_topic, Int16MultiArray, audio_callback, queue_size=1)
-    rospy.loginfo("audio localisation node started")
+    rospy.loginfo("audio node started")
     rospy.spin()
