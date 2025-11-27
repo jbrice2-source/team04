@@ -52,6 +52,8 @@ class searchMiro:
         #Publisherz
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
         self.pub_cos = rospy.Publisher(base1 + "/control/cosmetic_joints", Float32MultiArray, queue_size=0)
+        topic = self.base1 + "/control/tone"
+        self.pub_tone = rospy.Publisher(topic, UInt16MultiArray, queue_size=10)
 
         #Subscribers
         self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
@@ -224,11 +226,44 @@ class searchMiro:
     def callback_camr(self, ros_image):
         self.callback_cam(ros_image,1)
 
+    def speak(self,path):
+        
+        for move in path:
+            # create and send tone command
+            msg = UInt16MultiArray()
+            # [frequency (Hz), volume (0–255), duration (ms)]
+            #S
+            if move[0] == (-1,0):
+                msg.data = [1600, 128, 1000]
+            #SE
+            elif move[0] == (-1,-1):
+                msg.data = [3600, 128, 1000]
+            #E
+            elif move[0] == (0,-1):
+                msg.data = [1100, 128, 1000]
+            #NE
+            elif move[0] == (1,-1):
+                msg.data = [2600, 128, 1000]
+            #N
+            elif move[0] == (1,0):
+                msg.data = [600,128,1000] 
+            #NW
+            elif move[0] == (1,1):
+                msg.data = [3100, 128, 1000]
+            #W
+            elif move[0] == (0,1):
+                msg.data = [2100, 128, 1000]
+            #SW
+            elif move[0] == (-1,1):
+                msg.data = [4100, 128, 1000]
+            rospy.loginfo("playing 900 Hz tone for 1 second.")
+            self.pub_tone.publish(msg)
+            time.sleep(7)
+
     def move(self,path):
         rate = rospy.Rate(10)
         for move in path:
             currentAngle = self.currentAngle
-            print(move)
             print("waiting")
             self.velocity.twist.linear.x = 0
             self.velocity.twist.angular.z = 0
@@ -245,8 +280,6 @@ class searchMiro:
             newpos = np.array([self.pos.x - move[0][0],self.pos.y - move[0][1]])
             cur_pos = np.array([self.pos.x,self.pos.y])
             while np.linalg.norm(newpos-cur_pos) > 0.01:
-                print(f"{np.linalg.norm(newpos-cur_pos)}")
-                cur_pos = np.array([self.pos.x,self.pos.y])
                 angle = np.arctan2(*(cur_pos-newpos))
                 dists = [(self.pos.theta%(2*np.pi)-invert_move%(2*np.pi))%(2*np.pi),(invert_move%(2*np.pi)-self.pos.theta%(2*np.pi))%(2*np.pi)]
                 # print(self.pos.theta,move)
@@ -287,9 +320,11 @@ if __name__ == "__main__":
         height = 26
         start = (10,13)
         goal = (37,18)
+        #todo add Shauns grid here 
         grid = robot.generateGrid(start,goal,width,height)
         path = robot.aStarSearch(grid,start,goal,width,height)
-        robot.move(path)
+        #speak
+        robot.speak(path)
         robot.interface.disconnect()
     except KeyboardInterrupt:
         print("\nExecution ending (Ctrl+C)=")

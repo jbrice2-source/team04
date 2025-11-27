@@ -92,10 +92,8 @@ class lostMiro:
             rospy.loginfo("3900-4100 Hz frequency detected in audio input.")
             rospy.loginfo("placeholder3")
             
-    def interpret_sound(self):
-        self.currentDirection = ((0,-0.1),radians(90))
         
-        def execute_movement(self):
+    def execute_movement(self):
         print(self.currentDirection)
         self.velocity.twist.linear.x = 0
         self.velocity.twist.angular.z = 0
