@@ -52,50 +52,65 @@ class lostMiro:
 
     def audio_callback(self,msg):
         audio = np.asarray(msg.data)
-        
+        #if 500 - 700hz 
         if np.max(self.bandpass(audio, [500, 700], 20000.0)) > 700:
             rospy.loginfo("500-700 Hz frequency detected in audio input.")
             rospy.loginfo("north")
-            
+            self.soundHeard = True
+            self.currentDirection = ((0.1,0),radians(180))
         # if 1500 - 1900hz:
-        if np.max(self.bandpass(audio, [1000, 1200], 20000.0)) > 700:
+        elif np.max(self.bandpass(audio, [1000, 1200], 20000.0)) > 700:
             rospy.loginfo("900-1100 Hz frequency detected in audio input.")
             rospy.loginfo("east")
-            
+            self.soundHeard = True
+            self.currentDirection = ((0,0.1),radians(90))            
         # if 2000 - 2400hz:
-        if np.max(self.bandpass(audio, [1500, 1700], 20000.0)) > 700:
+        elif np.max(self.bandpass(audio, [1500, 1700], 20000.0)) > 700:
             rospy.loginfo("1500 - 1700 Hz frequency detected in audio input.")
-            rospy.loginfo("south")            
-            
+            rospy.loginfo("south")
+            self.soundHeard = True  
+            self.currentDirection = ((-0.1,0),radians(360))          
         # if 2500 - 2900hz: 
-        if np.max(self.bandpass(audio, [2000, 2200], 20000.0)) > 700:
+        elif np.max(self.bandpass(audio, [2000, 2200], 20000.0)) > 700:
             rospy.loginfo("2000-2200 Hz frequency detected in audio input.")
             rospy.loginfo("west")
-                        
+            self.soundHeard = True
+            self.currentDirection = ((0,-0.1),radians(270)) 
         # if 3000hz - 3400hz:
-        if np.max(self.bandpass(audio, [2500, 2700], 20000.0)) > 700:
+        elif np.max(self.bandpass(audio, [2500, 2700], 20000.0)) > 700:
             rospy.loginfo("2500-2700 Hz frequency detected in audio input.")
             rospy.loginfo("north east")
+            self.soundHeard = True
+            self.currentDirection = ((-0.1,-0.1),radians(45)) 
+
         # if 2000 - 2400hz:
-        if np.max(self.bandpass(audio, [3000, 3200], 20000.0)) > 700:
+        elif np.max(self.bandpass(audio, [3000, 3200], 20000.0)) > 700:
             rospy.loginfo("3000-3200 Hz frequency detected in audio input.")
             rospy.loginfo("north west")
-            
+            self.soundHeard = True
+            self.currentDirection = ((-0.1,-0.1),radians(315)) 
+
         # if 2500 - 2900hz:     
-        if np.max(self.bandpass(audio, [3500, 3700], 20000.0)) > 700:
+        elif np.max(self.bandpass(audio, [3500, 3700], 20000.0)) > 700:
             rospy.loginfo("3500-3700 Hz frequency detected in audio input.")
             rospy.loginfo("south east")
-            
+            self.soundHeard = True
+            self.currentDirection = ((0.1,0.1),radians(135)) 
+
         # if 3000hz - 3400hz:
-        if np.max(self.bandpass(audio, [4000, 4200], 20000.0)) > 600:
+        elif np.max(self.bandpass(audio, [4000, 4200], 20000.0)) > 600:
             rospy.loginfo("4000-4200 Hz frequency detected in audio input.")
             rospy.loginfo("south west")
+            self.soundHeard = True
+            self.currentDirection = (((0.1,-0.1),radians(225)))
         
         # if 3000hz - 3400hz:
-        if np.max(self.bandpass(audio, [4500, 4700], 20000.0)) > 600:
+        elif np.max(self.bandpass(audio, [4500, 4700], 20000.0)) > 600:
             rospy.loginfo("4500-4700 Hz frequency detected in audio input.")
             rospy.loginfo("stop")
-        
+            self.soundHeard = True
+            self.currentDirection = ((0,0),radians(0)) # stop command?  
+
     def execute_movement(self):
         print(self.currentDirection)
         self.velocity.twist.linear.x = 0
@@ -137,7 +152,6 @@ if __name__ == "__main__":
                 #listen
                 print(f"Instruction {robot.currentInstruction} recieved")
                 #move
-            robot.interpret_sound()
             robot.execute_movement()
             robot.soundHeard = False
 
