@@ -65,7 +65,6 @@ def audio_callback(msg):
         rospy.loginfo("3900-4100 Hz frequency detected in audio input.")
         rospy.loginfo("Stopping")
 
-
     else: print("no audio found")
     
 

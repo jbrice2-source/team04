@@ -45,7 +45,6 @@ class lostMiro:
         filtered_data = scipy.signal.sosfiltfilt(sos, data)
         return filtered_data
 
-
     def callback_pose(self, pose):
         if pose != None:
             self.pos = pose
@@ -53,35 +52,50 @@ class lostMiro:
 
     def audio_callback(self,msg):
         audio = np.asarray(msg.data)
-        #if 1000 - 1400hz:
-        if np.any((robot.bandpass(audio, [1000, 1400], 20000.0))):
-            rospy.loginfo("1000-1400 Hz frequency detected in audio input.")
-            rospy.loginfo("Turning left")
-            self.soundHeard = True
-        #if 1500 - 1900hz:
-        if np.any((robot.bandpass(audio, [1500, 1900], 20000.0))):
-            rospy.loginfo("1500-1900 Hz frequency detected in audio input.")
-            rospy.loginfo("Turning right")
-            self.soundHeard = True
-        #if 2000 - 2400hz:
-        if np.any((robot.bandpass(audio, [2000, 2400], 20000.0))):
-            rospy.loginfo("2000-2400 Hz frequency detected in audio input.")
+        
+        if np.max(bandpass(audio, [400, 600], 20000.0)) > 700:
+            rospy.loginfo("400-600 Hz frequency detected in audio input.")
+            rospy.loginfo("Turning 45deg left")
+            
+        # if 1500 - 1900hz:
+        if np.max(bandpass(audio, [900, 1100], 20000.0)) > 700:
+            rospy.loginfo("900-1100 Hz frequency detected in audio input.")
+            rospy.loginfo("Turning 45deg right")
+            
+        # if 2000 - 2400hz:
+        if np.max(bandpass(audio, [1400, 1600], 20000.0)) > 700:
+            rospy.loginfo("1400 - 1600 Hz frequency detected in audio input.")
             rospy.loginfo("Moving forward")
-            self.soundHeard = True
-        #if 2500 - 2900hz:
-        if np.any((robot.bandpass(audio, [2500, 2900], 20000.0))):
-            rospy.loginfo("2500-2900 Hz frequency detected in audio input.")
+            
+        # if 2500 - 2900hz: 
+        if np.max(bandpass(audio, [1900, 2100], 20000.0)) > 700:
+            rospy.loginfo("1900-2100 Hz frequency detected in audio input.")
             rospy.loginfo("Moving backwards")
-            self.soundHeard = True
-        #if 3000hz - 3400hz:
-        if np.any((robot.bandpass(audio, [3000, 3400], 20000.0))):
-            rospy.loginfo("3000-3400 Hz frequency detected in audio input.")
+            
+        # if 3000hz - 3400hz:
+        if np.max(bandpass(audio, [2400, 2600], 20000.0)) > 700:
+            rospy.loginfo("2400-2600 Hz frequency detected in audio input.")
             rospy.loginfo("Stopping")
-            self.soundHeard = True
+
+        # if 2000 - 2400hz:
+        if np.max(bandpass(audio, [2900, 3100], 20000.0)) > 700:
+            rospy.loginfo("2900-3100 Hz frequency detected in audio input.")
+            rospy.loginfo("placeholder1")
+            
+        # if 2500 - 2900hz:     
+        if np.max(bandpass(audio, [3400, 3600], 20000.0)) > 700:
+            rospy.loginfo("3400-3600 Hz frequency detected in audio input.")
+            rospy.loginfo("placeholder2")
+            
+        # if 3000hz - 3400hz:
+        if np.max(bandpass(audio, [3900, 4100], 20000.0)) > 700:
+            rospy.loginfo("3900-4100 Hz frequency detected in audio input.")
+            rospy.loginfo("placeholder3")
+            
     def interpret_sound(self):
         self.currentDirection = ((0,-0.1),radians(90))
-    
-    def execute_movement(self):
+        
+        def execute_movement(self):
         print(self.currentDirection)
         self.velocity.twist.linear.x = 0
         self.velocity.twist.angular.z = 0
