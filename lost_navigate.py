@@ -27,20 +27,22 @@ import scipy
 
 class lostMiro:
     def __init__(self):
-        base1 = "/miro01"
+        base1 = "/miro"
         self.currentDirection = ((0,0),0)
         self.goalReached = False
         self.interface = miro.lib.RobotInterface
         self.velocity = TwistStamped()
         self.pos = Pose2D()
         self.soundHeard = False
+        self.listening = True
         self.currentInstruction = ""
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
         self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
             Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
-        self.mic = rospy.Subscriber(base1 + "/sensors/mics", Int16MultiArray, self.audio_callback,queue_size=1)
+        self.audio = rospy.Subscriber(base1 + "/sensors/mics", Int16MultiArray, self.audio_callback, queue_size=1)
 
-    def bandpass(data, edges, sample_rate: float, poles: int = 5):
+
+    def bandpass(self, data, edges, sample_rate: float, poles: int = 5):
         sos = scipy.signal.butter(poles, edges, 'bandpass', fs=sample_rate, output='sos')
         filtered_data = scipy.signal.sosfiltfilt(sos, data)
         return filtered_data
@@ -51,15 +53,13 @@ class lostMiro:
             self.currentAngle = self.pos.theta
 
     def audio_callback(self,msg):
+        if self.listening == False:
+            return
         audio = np.asarray(msg.data)
-        #if 500 - 700hz 
-        if np.max(self.bandpass(audio, [500, 700], 20000.0)) > 700:
-            rospy.loginfo("500-700 Hz frequency detected in audio input.")
-            rospy.loginfo("north")
-            self.soundHeard = True
-            self.currentDirection = ((0.1,0),radians(180))
+        print(np.max(self.bandpass(audio, [3700, 4000], 20000.0)))
+
         # if 1500 - 1900hz:
-        elif np.max(self.bandpass(audio, [1000, 1200], 20000.0)) > 700:
+        if np.max(self.bandpass(audio, [1000, 1200], 20000.0)) > 700:
             rospy.loginfo("900-1100 Hz frequency detected in audio input.")
             rospy.loginfo("east")
             self.soundHeard = True
@@ -109,9 +109,18 @@ class lostMiro:
             rospy.loginfo("4500-4700 Hz frequency detected in audio input.")
             rospy.loginfo("stop")
             self.soundHeard = True
-            self.currentDirection = ((0,0),radians(0)) # stop command?  
+            self.currentDirection = ((0,0),radians(0)) # stop command? 
+        
+        #if 500 - 700hz 
+        if np.max(self.bandpass(audio, [3700, 4000], 20000.0)) > 700:
+            rospy.loginfo("3700 - 4000 Hz frequency detected in audio input.")
+            rospy.loginfo("north")
+            self.soundHeard = True
+            self.currentDirection = ((0.1,0),radians(180))
+        
 
     def execute_movement(self):
+        self.listening = False
         print(self.currentDirection)
         self.velocity.twist.linear.x = 0
         self.velocity.twist.angular.z = 0
@@ -124,6 +133,7 @@ class lostMiro:
         newpos = np.array([self.pos.x - self.currentDirection[0][0],self.pos.y - self.currentDirection[0][1]])
         cur_pos = np.array([self.pos.x,self.pos.y])
         while np.linalg.norm(newpos-cur_pos) > 0.01:
+            print(newpos)
             cur_pos = np.array([self.pos.x,self.pos.y])
             angle = np.arctan2(*(cur_pos-newpos))
             dists = [(self.pos.theta%(2*np.pi)-invert_move%(2*np.pi))%(2*np.pi),(invert_move%(2*np.pi)-self.pos.theta%(2*np.pi))%(2*np.pi)]
@@ -141,21 +151,24 @@ class lostMiro:
         self.velocity.twist.linear.x = 0
         self.velocity.twist.angular.z = 0
         self.pub_cmd_vel.publish(self.velocity)
-        
+        self.listening = True
 
 if __name__ == "__main__":
     rospy.init_node("lost_nav")
     robot = lostMiro()
+    # mic = rospy.Subscriber("miro01/sensors/mics", Int16MultiArray, audio_callback, queue_size=1)
+    rate = rospy.Rate(10)
+
     try:
         while robot.goalReached == False:
             while robot.soundHeard == False:
                 #listen
-                print(f"Instruction {robot.currentInstruction} recieved")
                 #move
+                rate.sleep()
+            if rospy.is_shutdown():
+                break
             robot.execute_movement()
-            robot.soundHeard = False
-
-            
+            robot.soundHeard = False            
     except KeyboardInterrupt:
         print("exiting...")
 
