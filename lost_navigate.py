@@ -47,6 +47,28 @@ class lostMiro:
         self.timer = rospy.Timer(rospy.Duration(0.1), self.detect_audio)
         self.timer = rospy.Timer(rospy.Duration(0.1), self.execute_movement)
 
+    
+    def bandpass(self, data, edges, sample_rate: float, poles: int = 5):
+        sos = scipy.signal.butter(poles, edges, 'bandpass', fs=sample_rate, output='sos')
+        filtered_data = scipy.signal.sosfiltfilt(sos, data)
+        return filtered_data
+    
+    def plot_band(self, band_signal, edges, label):
+        # Number of samples
+        samples = len(band_signal)
+
+        spectrum = np.fft.rfft(band_signal)
+        freqs = np.fft.rfftfreq(samples, d=1.0 / 20000.0)
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(freqs, np.abs(spectrum))
+        plt.title(f"Detected {label} ({edges[0]}-{edges[1]} Hz)")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("Magnitude")
+        plt.xlim(edges)  # zoom into the band of interest
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show(block=False)
 
     def detect_audio(self, *args):
 
@@ -83,7 +105,7 @@ class lostMiro:
             rospy.loginfo("700 - 900 Hz frequency detected in audio input.")
             rospy.loginfo("north")
             self.currentDirection = ((0.5,0),radians(180))
-            self.plot_band(channels[0], [700, 900], "700-900 Hz")
+            self.plot_band(fft(abs(channels[0])), [0, 1600], "700-900 Hz")
             print(self.listening)       
         # if 1000 - 1200hz:
         elif np.mean(abs(channels[1])) > threshhold:
@@ -125,23 +147,6 @@ class lostMiro:
         else: return
         self.listening = False
         # self.execute_movement()
-
-
-    def bandpass(self, data, edges, sample_rate: float, poles: int = 5):
-        sos = scipy.signal.butter(poles, edges, 'bandpass', fs=sample_rate, output='sos')
-        filtered_data = scipy.signal.sosfiltfilt(sos, data)
-        return filtered_data
-    
-    def plot_band(self, band_signal, edges, label):
-        plt.figure(figsize=(8, 4))
-        plt.plot(band_signal)
-        plt.title(f"Detected {label} ({edges[0]}–{edges[1]} Hz)")
-        plt.xlabel("Sample")
-        plt.ylabel("Amplitude")
-        plt.grid(True)
-        plt.tight_layout()
-        # block=False so ROS node keeps running while the window is open
-        plt.show(block=False)
 
     def callback_odom(self, odometry):
         if odometry != None:
