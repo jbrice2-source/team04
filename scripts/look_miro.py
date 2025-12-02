@@ -7,6 +7,7 @@ from std_msgs.msg import Float32MultiArray, UInt32MultiArray, UInt16MultiArray, 
 from geometry_msgs.msg import TwistStamped, Pose2D
 from sensor_msgs.msg import JointState, CompressedImage
 
+
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 import numpy as np
@@ -42,6 +43,8 @@ class LookMiro:
         self.interface = miro.lib.RobotInterface()
 
         self.velocity = TwistStamped()
+        self.velocity2 = TwistStamped()
+
         
         self.image_converter = CvBridge()
         self.camera = [None, None]
@@ -53,9 +56,20 @@ class LookMiro:
         self.pred_dist = [None, None]
         self.midpoints = [None,None]
         self.kin = JointState()
-
+        self.distance_queue = []
+        self.angle_queue = []
+        mode_path = "best_new.onnx"
+        self.onnx_model = ort.InferenceSession(mode_path)
+        self.package = None
+        self.other_path = [np.array([-1.0,0.0]),np.array([0.0,0.5]),np.array([1.0,-0.5]),np.array([0.5,0.5]),np.array([-0.5,-0.5])]
+        
+        self.pred_pos = None
+        self.pred_angle = None
+        
 
         self.pub_cmd_vel = rospy.Publisher(base2 + "/control/cmd_vel", TwistStamped, queue_size=0)
+        self.pub_cmd_vel2 = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0, latch=True)
+        
         # self.pub_cos = rospy.Publisher(basename + "/control/cosmetic_joints", Float32MultiArray, queue_size=0)
         # self.pub_illum = rospy.Publisher(basename + "/control/illum", UInt32MultiArray, queue_size=0)
         self.pub_kin = rospy.Publisher(base2 + "/control/kinematic_joints", JointState, queue_size=0)
@@ -69,6 +83,8 @@ class LookMiro:
             Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
         self.pose2 = rospy.Subscriber(base2 + "/sensors/body_pose",
             Pose2D, self.callback_pose2, queue_size=1, tcp_nodelay=True)
+        self.package = rospy.Subscriber(base2 + "/sensors/package",
+            miro.msg.sensors_package, self.package_callback, queue_size=1, tcp_nodelay=True)
         # self.sub_mics = rospy.Subscriber(basename + "/sensors/mics",
         #             Int16MultiArray, self.callback_mics, queue_size=1, tcp_nodelay=True)
         self.sub_caml = rospy.Subscriber(base2 + "/sensors/caml/compressed",
@@ -77,12 +93,14 @@ class LookMiro:
                 CompressedImage, self.callback_camr, queue_size=1, tcp_nodelay=True)
 
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.kin.position = [0.0, math.radians(50.0), 0.0, math.radians(-10)]
+        self.kin.position = [0.0, math.radians(50.0), math.radians(0), math.radians(-10.0)]
         self.pub_kin.publish(self.kin)
         
-        self.timer = rospy.Timer(rospy.Duration(0.1), self.match_image)
+        self.timer = rospy.Timer(rospy.Duration(0.5), self.match_image)
         
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
+        self.timer3 = rospy.Timer(rospy.Duration(1.0), self.move_miro)
+        self.timer4 = rospy.Timer(rospy.Duration(0.1), self.vel_publish)
 
 
         plt.subplot(121)
@@ -91,6 +109,12 @@ class LookMiro:
         self.display2 = plt.imshow(np.array([[0.0]]), 'gray')
         plt.show()
 
+    def vel_publish(self, *args):
+        self.pub_cmd_vel2.publish(self.velocity2)
+        
+        
+    def package_callback(self, package):
+        self.package = package
         
     def callback_pose(self, pose):
         if pose != None:
@@ -126,75 +150,82 @@ class LookMiro:
             #print(e)
             pass
 
-    def filter_Detections(results, thresh = 0.4):
-        A = []
-        for detection in results:
-            class_id = detection[4:].argmax()
-            confidence_score = np.sum(detection[4:])
-            # if confidence_score > thresh:
-                # print(detection[4:])
-            new_detection = np.append(detection[:4],[class_id,confidence_score])
-
-            A.append(new_detection)
-
-        A = np.array(A)
-        # filter out the detections with confidence > thresh
-        considerable_detections = [detection for detection in A if detection[-1] > thresh]
-        considerable_detections = np.array(considerable_detections)
-        # print(considerable_detections[:,-1])
-        return considerable_detections
-
     def match_image(self, *args):
         if type(None) in map(type,self.camera):
             return
+
         for index, img in enumerate(self.camera):
-            mode_path = "best_new.onnx"
-            onnx_model = ort.InferenceSession(mode_path)
 
             classes = ["0","45","90","135","180","225","270","315"]
             image = img.copy()
             
             img_height, img_width = image.shape[:2]
 
-            # img2 = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            img2, pad = LookMiro.letterbox(image, (640, 640))
+            # Convert the image color space from BGR to RGB
+            img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+            img, pad = LookMiro.letterbox(img, (640, 640))
+
             # Normalize the image data by dividing it by 255.0
-            image_data = np.array(img2) / 255.0
+            image_data = np.array(img) / 255.0
+
             # Transpose the image to have the channel dimension as the first dimension
             image_data = np.transpose(image_data, (2, 0, 1))  # Channel first
+
             # Expand the dimensions of the image data to match the expected input shape
             image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
-            outputs = onnx_model.run(None, {"images": image_data})
+
+            outputs = self.onnx_model.run(None, {"images": image_data})
+
             results = outputs[0]
             results = results.transpose()
-            # print(results.shape)
-            
-            
-            results = LookMiro.filter_Detections(results)
-            print(results.shape)
-            
-            pos1_vec = np.array([self.pos.x,self.pos.y])
-            pos2_vec = np.array([self.pos2.x,self.pos2.y])
-            real_dist = np.linalg.norm(pos1_vec-pos2_vec)
 
-            if len(results) != 0:
-                rescaled_results, confidences = LookMiro.rescale_back(results, img_width, img_height)
+            res1 = np.argmax(results[:,4:])//8
+            result = results[res1]
 
-                for res, conf in zip(rescaled_results, confidences):
-                    x1,y1,x2,y2, cls_id = res
-                    cls_id = int(cls_id)
-                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                    conf = "{:.2f}".format(conf)
-                    # draw the bounding boxes
-                    cv2.rectangle(image,(int(x1),int(y1)),(int(x2),int(y2)),(255,0, 0),2)
-                    cv2.putText(image,classes[cls_id]+' '+conf,(x1,y1-17),
-                                cv2.FONT_HERSHEY_SIMPLEX,0.7,(255,0,0),3)
-                    pred_dist = np.sqrt(70/(y2-y1))
-                    print("class", index,classes[cls_id], conf, y2-y1, pred_dist, pred_dist-real_dist)
-                    self.pred_dist[index] = pred_dist
-                    self.midpoints[index] = np.array([x2+x1,y2+y1])/2
+            class_id = np.argmax(result[4:])
+            conf = np.max(result[4:])
+
+            dimentions = np.array([img_width,img_height])
+            padding = 640-dimentions/dimentions.max()*640
+
+            bbox = np.array([[result[0]-result[2]/2-padding[0]/2,result[0]+result[2]/2-padding[0]/2],
+                            [result[1]-result[3]/2-padding[1]/2,result[1]+result[3]/2-padding[1]/2]])
+            bbox = bbox.reshape(-1,2)*np.array([img_width/(640-padding[0]),img_height/(640-padding[1])]).reshape(1,2)
+            bbox = bbox.astype(int).T.reshape(-1)*640//img_width
+
+            pos_vec = np.array([self.pos.x,self.pos.y])
+            other_vec = np.array([self.pos2.x,self.pos2.y])
+            pred_dist = np.sqrt(90/((bbox[3]-bbox[1])))/np.cos(self.package.kinematic_joints.position[2])
+
+            image = cv2.resize(image.copy(),(640,360))
+            cv2.rectangle(image, (bbox[0],bbox[1]),(bbox[2],bbox[3]),(255,0, 0),2)
+            cv2.putText(image,classes[class_id]+' '+f"{conf:.2f} {pred_dist:.2f}",(bbox[0],bbox[1]+20),
+                            cv2.FONT_HERSHEY_SIMPLEX,0.7,(255,0,0),2)
+            # print(conf, index)
+
+            
+            if conf > 0.3:
+                other_angle = (self.pos2.theta+np.radians(int(classes[class_id]))-np.pi+self.package.kinematic_joints.position[2])%(np.pi*2)
+                self.distance_queue.append(pred_dist)
+                self.angle_queue.append(other_angle)
+                if len(self.distance_queue) > 5:
+                    self.distance_queue = self.distance_queue[1:]
+                if len(self.angle_queue) > 5:
+                    self.angle_queue = self.angle_queue[1:]
+                # print(self.package.kinematic_joints.position[2])
+                # print(bbox[3]-bbox[1],np.round(pred_dist,2) , np.round(np.linalg.norm(pos_vec-other_vec),2), np.mean(self.distance_queue))
+                avg_dist = np.mean(self.distance_queue)
+                # print(np.round(pos_vec,2))
+                # print(classes[class_id], other_angle, np.round(self.pos.theta%(np.pi*2),2))
+                # print(np.round(np.median(self.angle_queue),2), np.round(np.median(self.distance_queue),2))
+                # print(np.round(self.pos.theta%(2*np.pi),2),np.round(np.linalg.norm(pos_vec-other_vec),2))
+                self.pred_dist[index] = np.mean(self.distance_queue)
+                self.midpoints[index] = np.array([bbox[2]+bbox[0],bbox[3]+bbox[1]])/2
             else:
+                self.pred_dist[index] = None
                 self.midpoints[index] = None
+            
             if index == 0:
                 self.display1.set_data(image)#
             else:
@@ -205,14 +236,11 @@ class LookMiro:
         
     def letterbox(img, new_shape):
         shape = img.shape[:2]  # current shape [height, width]
-
         # Scale ratio (new / old)
         r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
-
         # Compute padding
         new_unpad = round(shape[1] * r), round(shape[0] * r)
         dw, dh = (new_shape[1] - new_unpad[0]) / 2, (new_shape[0] - new_unpad[1]) / 2  # wh padding
-
         if shape[::-1] != new_unpad:  # resize
             img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
         top, bottom = round(dh - 0.1), round(dh + 0.1)
@@ -228,7 +256,7 @@ class LookMiro:
         h,w,_ = self.camera[0].shape        
         cdist = 0
         cdisty = 0
-        print(self.midpoints)
+        # print(self.midpoints)
         if type(self.midpoints[0]) != type(None) and type(self.midpoints[1]) != type(None):
             cdist = ((3*w/4 - self.midpoints[0][0])+(w/4 - self.midpoints[1][0]))/2
             cdisty = ((h - self.midpoints[0][1]- self.midpoints[1][1]))/2
@@ -238,119 +266,109 @@ class LookMiro:
         elif type(self.midpoints[1]) != type(None):
             cdist = w/4 - self.midpoints[1][0]
             cdisty = h/2 - self.midpoints[1][1]
-        print(cdist,cdisty)
+        # print(cdist,cdisty)
         
         pred_dist = None
-        if self.pred_dist[0] is not None and self.pred_dist[1] is not None:
-            pred_dist = np.mean(self.pred_dist)
-        elif self.pred_dist[0] is not None:
-            pred_dist = self.pred_dist[0]
-        elif self.pred_dist[1] is not None:
-            pred_dist = 0
+        if abs(cdist) > 100:
+            self.pred_pos = None
+        if abs(cdist) < 70:
+            self.velocity.twist.angular.z = 0.0
+            if self.pred_dist[0] is not None and self.pred_dist[1] is not None:
+                pred_dist = np.mean(self.pred_dist)
+            elif self.pred_dist[0] is not None:
+                pred_dist = self.pred_dist[0]
+            elif self.pred_dist[1] is not None:
+                pred_dist = self.pred_dist[1]
+            
+            if len(self.angle_queue) > 0 and pred_dist is not None:
+                self.pred_angle = np.median(self.angle_queue)
+                pos_vec = np.array([self.pos2.x,self.pos2.y])
+                self.pred_pos = pos_vec+pred_dist*np.array([np.cos(self.pos2.theta+ self.package.kinematic_joints.position[2]),
+                                                            np.sin(self.pos2.theta+self.package.kinematic_joints.position[2])])
+                print("pos", self.pred_pos.round(2))
+                # print("real pos", np.round([self.pos.x,self.pos.y],2))
+        elif self.package.kinematic_joints.position[2] < math.radians(25) and cdist > 0:
+            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(5)
+        elif self.package.kinematic_joints.position[2] > -math.radians(25) and cdist < 0:
+            # print(cdist,self.package.kinematic_joints.position[2])
+            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(5)*np.sign(cdist)
+            # self.velocity.twist.angular.z = 0.6
+        else:
+            self.velocity.twist.angular.z = 0.8*np.sign(cdist)
+            self.kin.position[2] = 0.0#self.package.kinematic_joints.position[2]-math.radians(1)*np.sign(cdist)
+
+
+            # self.kin.position[2] = self.package.kinematic_joints.position[2]-math.radians(1)
+            # self.velocity.twist.angular.z = -0.6
+        # else:
+        #     self.velocity.twist.angular.z = 0.0
+        #     pred_dist = None
+        
         if pred_dist is None:
             self.velocity.twist.linear.x = 0.0
         elif pred_dist > 1.1:
-            self.velocity.twist.linear.x = 0.1
-        elif pred_dist < 1.0:
-            self.velocity.twist.linear.x = -0.1
+            self.velocity.twist.linear.x = 0.15
+        elif pred_dist < 0.8:
+            self.velocity.twist.linear.x = -0.15
+            
         else: 
             self.velocity.twist.linear.x = 0.0
         
-        if abs(cdist) < 50:
-            self.velocity.twist.angular.z = 0.0
-        elif cdist > 0:
-            self.velocity.twist.angular.z = 0.3
-        elif cdist < 0:
-            self.velocity.twist.angular.z = -0.3
-        else:
-            self.velocity.twist.angular.z = 0.0
 
-            
         self.pub_cmd_vel.publish(self.velocity)
-        if abs(cdisty) < 50:
+        if abs(cdisty) < 20:
             pass
         elif cdisty > 0:
-            self.kin.position[3] -= math.radians(1)
+            if abs(self.package.kinematic_joints.position[3]) < math.radians(7):
+                self.kin.position[3] = np.clip(self.package.kinematic_joints.position[3]+math.radians(0.3), math.radians(-15), math.radians(30))
+            else:
+                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]+math.radians(0.3), math.radians(30), math.radians(50))
         else:
-            self.kin.position[3] += math.radians(1)
-                    
+            if abs(self.package.kinematic_joints.position[3]) < math.radians(25):
+                self.kin.position[3] = np.clip(self.package.kinematic_joints.position[3]-math.radians(0.3), math.radians(-15), math.radians(30))
+            else:
+                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]-math.radians(0.3), math.radians(30), math.radians(50))
+        # self.kin.position[3] = np.clip(self.kin.position[3],math.radians(-15),math.radians(15))                    
         self.pub_kin.publish(self.kin)
+        # self.pub_cmd_vel2.publish(self.velocity2)
         
+    def move_miro(self, *args):
+        if self.pred_pos is None or len(self.other_path)==0:
+            self.velocity2.twist.linear.x = 0.0
+            self.velocity2.twist.angular.z = 0.0
+            self.pub_cmd_vel2.publish(self.velocity2)
+            print("Path finished")
+            return
+        target_pos = self.other_path[0]#np.array([1.0,0.0])
+        self.velocity2.twist.linear.x = 0.1
+        target = np.arctan2(target_pos[1]-self.pred_pos[1],target_pos[0]-self.pred_pos[0])
         
+        # calculates the differance in angle between current and target
+        dists = [(self.pred_angle%(2*np.pi)-target%(2*np.pi))%(2*np.pi),(target%(2*np.pi)-self.pred_angle%(2*np.pi))%(2*np.pi)]
+
+        # checks if the robot is close to the next node in the path 
+        if np.linalg.norm(target_pos-self.pred_pos) < 0.3:
+            self.velocity2.twist.linear.x = 0.0
+            self.velocity2.twist.angular.z = 0.0
+            self.other_path = self.other_path[1:]
+            print("goal found")
         
-    def NMS(boxes, conf_scores, iou_thresh = 0.55):
+        # checks if the robot is looking in the right direction
+        elif min(dists) < 0.5:
+            self.velocity2.twist.angular.z = 0.0
+            self.pub_cmd_vel2.publish(self.velocity2)
+        # moves clockwise if the right angle is lower
+        elif dists[0] >= dists[1]:
+            self.velocity2.twist.angular.z = 0.5
+            self.velocity2.twist.linear.x = 0.01
+            # print("turning left")
+        # moves counter clockwise otherwise
+        else:
+            self.velocity2.twist.angular.z = -0.5
+            self.velocity2.twist.linear.x = 0.01
 
-        #  boxes [[x1,y1, x2,y2], [x1,y1, x2,y2], ...]
-
-        x1 = boxes[:,0]
-        y1 = boxes[:,1]
-        x2 = boxes[:,2]
-        y2 = boxes[:,3]
-
-        areas = (x2-x1)*(y2-y1)
-
-        order = conf_scores.argsort()
-
-        keep = []
-        keep_confidences = []
-
-        while len(order) > 0:
-            idx = order[-1]
-            A = boxes[idx]
-            conf = conf_scores[idx]
-
-            order = order[:-1]
-
-            xx1 = np.take(x1, indices= order)
-            yy1 = np.take(y1, indices= order)
-            xx2 = np.take(x2, indices= order)
-            yy2 = np.take(y2, indices= order)
-
-            keep.append(A)
-            keep_confidences.append(conf)
-
-            # iou = inter/union
-
-            xx1 = np.maximum(x1[idx], xx1)
-            yy1 = np.maximum(y1[idx], yy1)
-            xx2 = np.minimum(x2[idx], xx2)
-            yy2 = np.minimum(y2[idx], yy2)
-
-            w = np.maximum(xx2-xx1, 0)
-            h = np.maximum(yy2-yy1, 0)
-
-            intersection = w*h
-
-            # union = areaA + other_areas - intesection
-            other_areas = np.take(areas, indices= order)
-            union = areas[idx] + other_areas - intersection
-
-            iou = intersection/union
-
-            boleans = iou < iou_thresh
-
-            order = order[boleans]
-
-            # order = [2,0,1]  boleans = [True, False, True]
-            # order = [2,1]
-
-        return keep, keep_confidences
-    
-    def rescale_back(results,img_w,img_h):
-        cx, cy, w, h, class_id, confidence = results[:,0], results[:,1], results[:,2], results[:,3], results[:,4], results[:,-1]
-        cx = cx/640.0 * img_w
-        cy = cy/640.0 * img_h
-        w = w/640.0 * img_w
-        h = h/640.0 * img_h
-        x1 = cx - w/2
-        y1 = cy - h/2
-        x2 = cx + w/2
-        y2 = cy + h/2
-
-        boxes = np.column_stack((x1, y1, x2, y2, class_id))
-        keep, keep_confidences = LookMiro.NMS(boxes,confidence)
-        print(np.array(keep).shape)
-        return keep, keep_confidences
+        self.pub_cmd_vel2.publish(self.velocity2)
+        
         
     def loop(self):
         pass
