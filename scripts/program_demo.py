@@ -29,9 +29,17 @@ MAP_SIZE = 80
 OBSTACLE_SIZE=1
 BODY_SIZE=2
 
+#Grid Cell for the A-Star implementation
+class Cell:
+    def __init__(self):
+        self.parent_x = 0
+        self.parent_y = 0
+        self.f = float('inf')
+        self.g = float('inf')
+        self.h = 0
+
 
 class Explore:
-    
     def __init__(self):
         base1 = "/miro01"
         base2 = "/miro02"
@@ -418,7 +426,9 @@ class Explore:
             self.velocity.twist.angular.z = -1.2
             self.velocity.twist.linear.x = 0.01
         self.pub_cmd_vel.publish(self.velocity)
-        
+    
+
+
     #A-Star search implementation
     def aStarSearch(self,grid,start,goal,width,height):
 
