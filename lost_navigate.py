@@ -68,11 +68,6 @@ class lostMiro:
                 self.bandpass(audio, [3900, 4100], 20000.0)
         ])
 
-        print(np.mean(abs(channels[-1])), "4000 hz")
-        print(np.mean(abs(channels[0])), "800 HZ")
-
-
-
         if np.mean(abs(channels[-1])) > threshhold:
             rospy.loginfo("3900-4100 Hz frequency detected in audio input.")
             rospy.loginfo("stop")     
@@ -88,6 +83,7 @@ class lostMiro:
             rospy.loginfo("700 - 900 Hz frequency detected in audio input.")
             rospy.loginfo("north")
             self.currentDirection = ((0.5,0),radians(180))
+            self.plot_band(channels[0], [700, 900], "700-900 Hz")
             print(self.listening)       
         # if 1000 - 1200hz:
         elif np.mean(abs(channels[1])) > threshhold:
@@ -135,6 +131,17 @@ class lostMiro:
         sos = scipy.signal.butter(poles, edges, 'bandpass', fs=sample_rate, output='sos')
         filtered_data = scipy.signal.sosfiltfilt(sos, data)
         return filtered_data
+    
+    def plot_band(self, band_signal, edges, label):
+        plt.figure(figsize=(8, 4))
+        plt.plot(band_signal)
+        plt.title(f"Detected {label} ({edges[0]}–{edges[1]} Hz)")
+        plt.xlabel("Sample")
+        plt.ylabel("Amplitude")
+        plt.grid(True)
+        plt.tight_layout()
+        # block=False so ROS node keeps running while the window is open
+        plt.show(block=False)
 
     def callback_odom(self, odometry):
         if odometry != None:
