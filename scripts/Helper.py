@@ -31,8 +31,14 @@ OBSTACLE_SIZE=1
 BODY_SIZE=2
 
 
-
-
+#Grid Cell for the A-Star implementation
+class Cell:
+    def __init__(self):
+        self.parent_x = 0
+        self.parent_y = 0
+        self.f = float('inf')
+        self.g = float('inf')
+        self.h = 0
 
 class Helper():
     

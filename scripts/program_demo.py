@@ -14,7 +14,7 @@ import math
 import miro2 as miro
 import time
 from queue import Queue, LifoQueue
-
+from math import radians
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -67,12 +67,14 @@ class Explore:
         self.other_map_pos = None
         self.head_direction = 5
         self.path = []
+        self.astar_path = []
         self.starting_scan = True
         self.miro_found = False
         self.final_map = None
 
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=10)
         self.pub_kin = rospy.Publisher(base1 + "/control/kinematic_joints", JointState, queue_size=10)
+        self.pub_tone = rospy.Publisher(base1 + "control/tone", UInt16MultiArray,queue_size=1)
 
         # subscribers
         self.sub_package = rospy.Subscriber(base1 + "/sensors/package",
@@ -81,7 +83,7 @@ class Explore:
             Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
         self.pose2 = rospy.Subscriber(base2 + "/sensors/body_pose",
             Pose2D, self.other_pose, queue_size=1, tcp_nodelay=True)
-        
+    
 
 
         # performs a simple rotation to scan the surrounding area
@@ -99,6 +101,7 @@ class Explore:
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
         self.timer3 = rospy.Timer(rospy.Duration(1.0), self.search_map)
         self.timer4 = rospy.Timer(rospy.Duration(0.1), self.follow_miro)
+        self.timer5 = rospy.Timer(rospy.Duration(10), self.make_sound)
 
 
         # creating plots for visualisation
@@ -217,7 +220,7 @@ class Explore:
                 self.timer3.shutdown()
                 self.kin.position = [0.0,np.radians(40),0.0,np.radians(10)]
                 self.pub_kin.publish(self.kin)
-                
+                self.aStarSearch()
                 self.final_map = np.full((MAP_SIZE,MAP_SIZE),False)
                 for i,n in enumerate(self.map):
                     for j,m in enumerate(n):
@@ -427,11 +430,80 @@ class Explore:
             self.velocity.twist.linear.x = 0.01
         self.pub_cmd_vel.publish(self.velocity)
     
-
+    def make_sound(self):
+        action = self.astar_path.pop
+        #North
+        if(action[1] == radians(360)):
+            msg = UInt16MultiArray
+            #800 Hz tone
+            msg.data = [800, 128, 1000]
+            self.pub_tone.publish(msg)
+        elif(action[1] == radians(315)):
+            msg = UInt16MultiArray
+            msg.data = [2800, 128, 1000]
+            self.pub_tone.publish(msg)
+        #West
+        elif(action[1] == radians(270)):
+            msg = UInt16MultiArray
+            msg.data = [2000, 128, 1000]
+            self.pub_tone.publish(msg)
+        elif(action[1] == radians(225)):
+            msg = UInt16MultiArray
+            msg.data = [3600, 128, 1000]
+            self.pub_tone.publish(msg)
+        #South
+        elif(action[1] == radians(180)):
+            msg = UInt16MultiArray
+            msg.data = [1600, 128, 1000]
+            self.pub_tone.publish(msg)
+        elif(action[1] == radians(135)):
+            msg = UInt16MultiArray
+            msg.data = [3200, 128, 1000]
+            self.pub_tone.publish(msg)
+        #East
+        elif(action[1] == radians(90)):
+            msg = UInt16MultiArray
+            msg.data = [1200, 128, 1000]
+            self.pub_tone.publish(msg)
+        elif(action[1] == radians(45)):
+            msg = UInt16MultiArray
+            msg.data = [2400, 128, 1000]
+            self.pub_tone.publish(msg)
+            
+    #Displays the path to take
+    def tracePath(self, cellDetails,goal):
+        print("The path is ")
+        path = []
+        row = goal[0]
+        col = goal[1]
+        dirMap = {
+            (-1,0): ((-0.1,0),radians(360)),
+            (-1,1): ((-0.1,-0.1),radians(45)),
+            (0,1): ((0,0.1),radians(90)),
+            (1,1): ((0.1,0.1),radians(135)),
+            (1,0): ((0.1,0),radians(180)),
+            (1,-1): ((0.1,-0.1),radians(225)),
+            (0,-1): ((0,-0.1),radians(270)),
+            (-1,-1): ((-0.1,-0.1),radians(315))
+        }
+        while not (cellDetails[row][col].parent_x == row and cellDetails[row][col].parent_y == col):      
+            tempRow = cellDetails[row][col].parent_x
+            tempCol = cellDetails[row][col].parent_y
+            changeMatrix = (tempRow - row, tempCol - col)
+            dir = dirMap.get(changeMatrix)
+            row = tempRow
+            col = tempCol
+            path.append(dir)
+        self.astar_path = path
+        return
 
     #A-Star search implementation
-    def aStarSearch(self,grid,start,goal,width,height):
-
+    def aStarSearch(self):
+        start = self.pos.x,self.pos.y
+        goal = self.other_pos.x,self.other_pos.y
+        width = 80
+        height = 80 
+        grid = self.map
         if not self.isValid(start[0],start[1],width,height) or not self.isValid(goal[0],goal[1],width,height):
             return "Source or destinaton is invalid"
         
