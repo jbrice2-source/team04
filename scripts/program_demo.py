@@ -413,9 +413,7 @@ class Explore:
             self.velocity.twist.linear.x = -0.1
         else:
             self.velocity.twist.linear.x = 0.0
-
             # self.velocity.twist.angular.z = 0.0
-        
         # checks if the robot is looking in the right direction
         if min(dists) < 0.1:
             self.velocity.twist.angular.z = 0.0
@@ -435,7 +433,6 @@ class Explore:
         #North
         if(action[1] == radians(360)):
             msg = UInt16MultiArray
-            #800 Hz tone
             msg.data = [800, 128, 1000]
             self.pub_tone.publish(msg)
         elif(action[1] == radians(315)):
@@ -470,7 +467,7 @@ class Explore:
             msg.data = [2400, 128, 1000]
             self.pub_tone.publish(msg)
             
-    #Displays the path to take
+    #Creates path
     def tracePath(self, cellDetails,goal):
         print("The path is ")
         path = []
