@@ -428,7 +428,7 @@ class Explore:
             self.velocity.twist.linear.x = 0.01
         self.pub_cmd_vel.publish(self.velocity)
     
-    def make_sound(self):
+    def make_sound(self,*args):
         action = self.astar_path.pop
         #North
         if(action[1] == radians(360)):
