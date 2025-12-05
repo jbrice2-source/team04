@@ -76,11 +76,11 @@ class Explore:
 
 
         # performs a simple rotation to scan the surrounding area
-        scan_timer = time.time_ns()
-        while time.time_ns()-scan_timer < 5e9:
-            self.pub_kin.publish(self.kin)
-            self.velocity.twist.angular.z = 1.2
-            self.pub_cmd_vel.publish(self.velocity)
+        # scan_timer = time.time_ns()
+        # while time.time_ns()-scan_timer < 5e9:
+        #     self.pub_kin.publish(self.kin)
+        #     self.velocity.twist.angular.z = 1.2
+        #     self.pub_cmd_vel.publish(self.velocity)
         self.starting_scan = False
 
 
@@ -205,6 +205,7 @@ class Explore:
                 self.timer3.shutdown()
                 self.kin.position = [0.0,np.radians(40),0.0,np.radians(10)]
                 self.pub_kin.publish(self.kin)
+                self.interface.msg_kin_joints.set(self.kin,0.2)
 
     # callback for the odometery
     def callback_pose(self, pose):
@@ -233,7 +234,8 @@ class Explore:
         self.kin.position[2] += np.radians(self.head_direction)
         if abs(self.kin.position[2]) > np.radians(50):
             self.head_direction *= -1 # reverses the direction after hitting a limit
-        self.pub_kin.publish(self.kin)        
+        self.pub_kin.publish(self.kin)     
+        self.interface.msg_kin_joints.set(self.kin,0.2)
 
     # dijkstra's algorithm to search for unexplored space
     def search_map(self, *args):
@@ -329,7 +331,7 @@ class Explore:
         try:
             if len(self.path) == 0:
                 self.velocity.twist.linear.x = 0.0
-                self.velocity.twist.angular.z = 0.0
+                self.velocity.twist.angular.z = 0.6
                 self.pub_cmd_vel.publish(self.velocity)
                 print("path finished")
                 return
