@@ -26,7 +26,7 @@ import uuid
 
 droop, wag, left_eye, right_eye, left_ear, right_ear = range(6)
 
-MAP_SCALE = 10
+MAP_SCALE = 15
 MAP_SIZE = 100
 OBSTACLE_SIZE=1
 BODY_SIZE=1
@@ -52,17 +52,18 @@ class Explore:
         self.kin = JointState()
         # defines the joint positions
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.kin.position = [0.0, math.radians(30.0), 0.0, math.radians(-10.0)]
+        self.kin.position = [0.0, math.radians(40.0), 0.0, math.radians(-10.0)]
         self.input_package = None
         self.map = np.zeros((MAP_SIZE,MAP_SIZE,3),np.uint8)+127
         self.display = None
         self.map_start = np.array([MAP_SIZE//2,MAP_SIZE//2])
         self.map_pos = np.copy(self.map_start)
         self.other_map_pos = None
-        self.head_direction = 10
+        self.head_direction = 40
         self.path = []
         self.starting_scan = True
         self.miro_found = False
+        self.move_head = True
 
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=10)
         # self.pub_kin = rospy.Publisher(base1 + "/control/kinematic_joints", JointState, queue_size=10)
@@ -87,9 +88,10 @@ class Explore:
 
 
         # timers to call the various functions
-        self.timer = rospy.Timer(rospy.Duration(0.2), self.move_to_point)
+        self.timer = rospy.Timer(rospy.Duration(0.3), self.move_to_point)
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
         self.timer3 = rospy.Timer(rospy.Duration(1.0), self.search_map)
+        self.timer4 = rospy.Timer(rospy.Duration(0.1), self.draw_map)
         # self.timer4 = rospy.Timer(rospy.Duration(0.1), self.follow_miro)
 
 
@@ -126,12 +128,14 @@ class Explore:
         if self.miro_found:
             return
         self.input_package = msg
+
+    def draw_map(self, *args):
         dist = self.input_package.sonar.range
         if self.start_pos is None or self.pos is None:
             return
         if dist == float('inf'): # filtering out infinity
             dist = 1.0
-        dist += 0.01 # adds distance to account for head offset, probably useless
+        dist += 0.05 # adds distance to account for head offset, probably useless
         
         # makes the robot reverse and recalculate it's path if it's in front of an obstacle 
 
@@ -158,7 +162,7 @@ class Explore:
                           max(cur_map[1]-OBSTACLE_SIZE,0),
                           min(cur_map[1]+OBSTACLE_SIZE+1,self.map.shape[1])]
                 self.map[coords[0]:coords[1],coords[2]:coords[3]] = Explore.increase_prob(self.map[coords[0]:coords[1],coords[2]:coords[3]],False,dist)
-        if dist < 0.8: 
+        if dist < 0.6: 
             selected_map = self.map[max(map_coords[0]-OBSTACLE_SIZE,0):min(map_coords[0]+OBSTACLE_SIZE+1,self.map.shape[0]),
                                     max(map_coords[1]-OBSTACLE_SIZE,0):min(map_coords[1]+OBSTACLE_SIZE+1,self.map.shape[1])]
             self.map[max(map_coords[0]-OBSTACLE_SIZE,0):min(map_coords[0]+OBSTACLE_SIZE+1,self.map.shape[0]),
@@ -220,9 +224,9 @@ class Explore:
                 self.start_pos = Pose2D()
                 self.start_pos.x = self.pos.x
                 self.start_pos.y = self.pos.y
-                print("setting starting pos")
+                # print("setting starting pos")
             # print(self.pos.x,self.pos.y,self.pos.theta)
-            print(self.start_pos.x,self.start_pos.y)
+            # print(self.start_pos.x,self.start_pos.y)
             # print(self.pos2map(self.pos.x,self.pos.y))
             # print("starting pos:", self.pos.x,self.pos.y)
             # sets positions of previous robot as empty 
@@ -241,8 +245,9 @@ class Explore:
        
     # continuously moves the head around to better guage it's surroundings
     def head_move(self, *args):
-        self.kin.position[2] += np.radians(self.head_direction)
-        if abs(self.kin.position[2]) > np.radians(40):
+        if self.move_head:
+            self.kin.position[2] = self.input_package.kinematic_joints.position[2]+np.radians(self.head_direction)
+        if abs(self.kin.position[2]) > np.radians(45):
             self.head_direction *= -1 # reverses the direction after hitting a limit
         # self.pub_kin.publish(self.kin)     
         self.interface.msg_kin_joints.set(self.kin,0.1)
@@ -325,7 +330,7 @@ class Explore:
                     next_val = (value, i)
             # appends the best value to the path
             path.append(next_val[1])
-        self.path = path
+        self.path = path[:-5]
         # displays the path
         path_map = np.zeros(dist_map.shape,dtype=int)
         for i in path:
@@ -340,8 +345,8 @@ class Explore:
             return
         try:
             if len(self.path) == 0:
-                self.velocity.twist.linear.x = -0.05
-                self.velocity.twist.angular.z = 1.2
+                self.velocity.twist.linear.x = 0.05
+                self.velocity.twist.angular.z = 1.8
                 self.interface.msg_cmd_vel.set(self.velocity, 0.2)
                 # rospy.sleep(6)
                 print("path finished")
@@ -360,35 +365,49 @@ class Explore:
                 return
             if dist == float('inf'): # filtering out infinity
                 dist = 1.0
-            dist += 0.01 # adds distance to account for head offset, probably useless
+            # dist += 0.01 # adds distance to account for head offset, probably useless
 
             # checks if the robot is close to the next node in the path 
-            if np.linalg.norm(target_pos-np.array([self.pos.x,self.pos.y])) < 0.2:
-                self.velocity.twist.linear.x = 0.0
-                self.velocity.twist.angular.z = 0.0
-                self.path = self.path[:-1] # removes the last element from the path
-            elif dist < 0.4 and abs(self.input_package.kinematic_joints.position[2]) < 0.4:
-                self.path = self.path[:-1]
-                self.velocity.twist.linear.x = -0.15
-                self.interface.msg_cmd_vel.set(self.velocity, 1)
-            else:
-                
-                self.velocity.twist.linear.x = 0.2
-                # checks if the robot is looking in the right direction
-                if min(dists) < 0.2:
-                    self.velocity.twist.angular.z = 0.0
-                    # self.interface.msg_cmd_vel.set(self.velocity, 0.5)
-                # moves clockwise if the right angle is lower
-                elif dists[0] >= dists[1]:
-                    self.velocity.twist.angular.z = 1.2
-                    # self.velocity.twist.linear.x = 0.02
-                    # print("turning left")
-                # moves counter clockwise otherwise
-                else:
-                    self.velocity.twist.angular.z = -1.2
-                    # self.velocity.twist.linear.x = 0.02
+            # self.velocity.twist.linear.x = 0.00
 
-            self.interface.msg_cmd_vel.set(self.velocity, 0.2)
+            if np.linalg.norm(target_pos-np.array([self.pos.x,self.pos.y])) < 0.3:
+                # self.velocity.twist.linear.x = 0.20
+                # self.velocity.twist.angular.z = 0.0
+                self.path = self.path[:-1] # removes the last element from the path
+                print("path explored")
+
+            # checks if the robot is looking in the right direction
+            if min(dists) < 0.3:
+                # self.velocity.twist.angular.z = 0.0
+                if dist < 0.4 and abs(self.input_package.kinematic_joints.position[2]) < 0.6:
+                    self.path = []
+                    self.velocity.twist.linear.x = -0.2
+                    self.move_head = False
+                    # self.interface.msg_cmd_vel.set(self.velocity, 1)
+                    print("reversing")
+                else:
+                    self.velocity.twist.linear.x = 0.2*(1-min(dists)/np.pi)
+                    self.move_head = True
+                    print("moving forwards")
+
+
+                # self.interface.msg_cmd_vel.set(self.velocity, 0.5)
+            if min(dists) < 0.2:
+                self.velocity.twist.angular.z = 0.0
+                print("stop turning", min(dists))
+            # moves clockwise if the right angle is lower
+            elif dists[0] >= dists[1]:
+                self.velocity.twist.angular.z = 1.8
+                print("moving right", min(dists))
+                # self.velocity.twist.linear.x = 0.02
+                # print("turning left")
+            # moves counter clockwise otherwise
+            else:
+                self.velocity.twist.angular.z = -1.8
+                print("moving left", min(dists))
+                # self.velocity.twist.linear.x = 0.02
+
+            self.interface.msg_cmd_vel.set(self.velocity, 0.3)
         except Exception as e:
             print("exception",e)
             

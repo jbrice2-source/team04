@@ -22,24 +22,11 @@ from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCan
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
  
-MIN_MATCH_COUNT = 10
-images = glob("cropped_pictures/*.png")
-
-image_data = np.empty_like(images,dtype=tuple)
-
-# Initiate SIFT detector
-sift = cv2.SIFT_create()
-for i,n in enumerate(images):
-    img1 = cv2.imread(n, cv2.IMREAD_GRAYSCALE)          # queryImage
-    kp1, des1 = sift.detectAndCompute(img1,None)
-    image_data[i] = (img1,kp1,des1)
-
-
 class LookMiro:
     
     def __init__(self):
-        base1 = "/miro01"
-        base2 = "/miro02"
+        # base1 = "/miro01"
+        base2 = "/miro"
         self.interface = miro.lib.RobotInterface()
 
         self.velocity = TwistStamped()
@@ -68,7 +55,7 @@ class LookMiro:
         
 
         self.pub_cmd_vel = rospy.Publisher(base2 + "/control/cmd_vel", TwistStamped, queue_size=0)
-        self.pub_cmd_vel2 = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0, latch=True)
+        # self.pub_cmd_vel2 = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0, latch=True)
         
         # self.pub_cos = rospy.Publisher(basename + "/control/cosmetic_joints", Float32MultiArray, queue_size=0)
         # self.pub_illum = rospy.Publisher(basename + "/control/illum", UInt32MultiArray, queue_size=0)
@@ -79,8 +66,8 @@ class LookMiro:
         # subscribers
         # self.sub_package = rospy.Subscriber(base2 + "/sensors/package",
         #             miro.msg.sensors_package, self.callback_package, queue_size=1, tcp_nodelay=True)
-        self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
-            Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
+        # self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
+        #     Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
         self.pose2 = rospy.Subscriber(base2 + "/sensors/body_pose",
             Pose2D, self.callback_pose2, queue_size=1, tcp_nodelay=True)
         self.package = rospy.Subscriber(base2 + "/sensors/package",
@@ -94,13 +81,13 @@ class LookMiro:
 
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
         self.kin.position = [0.0, math.radians(50.0), math.radians(0), math.radians(-10.0)]
-        self.pub_kin.publish(self.kin)
+        self.interface.msg_kin_joints.set(self.kin,0.1)
         
         self.timer = rospy.Timer(rospy.Duration(0.5), self.match_image)
         
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
-        self.timer3 = rospy.Timer(rospy.Duration(1.0), self.move_miro)
-        self.timer4 = rospy.Timer(rospy.Duration(0.1), self.vel_publish)
+        # self.timer3 = rospy.Timer(rospy.Duration(1.0), self.move_miro)
+        # self.timer4 = rospy.Timer(rospy.Duration(0.1), self.vel_publish)
 
 
         plt.subplot(121)
@@ -205,7 +192,7 @@ class LookMiro:
             # print(conf, index)
 
             
-            if conf > 0.3:
+            if conf > 0.45:
                 other_angle = (self.pos2.theta+np.radians(int(classes[class_id]))-np.pi+self.package.kinematic_joints.position[2])%(np.pi*2)
                 self.distance_queue.append(pred_dist)
                 self.angle_queue.append(other_angle)
@@ -266,7 +253,7 @@ class LookMiro:
         elif type(self.midpoints[1]) != type(None):
             cdist = w/4 - self.midpoints[1][0]
             cdisty = h/2 - self.midpoints[1][1]
-        # print(cdist,cdisty)
+        print(cdist,cdisty)
         
         pred_dist = None
         if abs(cdist) > 100:
@@ -288,13 +275,16 @@ class LookMiro:
                 print("pos", self.pred_pos.round(2))
                 # print("real pos", np.round([self.pos.x,self.pos.y],2))
         elif self.package.kinematic_joints.position[2] < math.radians(25) and cdist > 0:
-            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(5)
+            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(12)
+            print("turning left",self.package.kinematic_joints.position[2])
         elif self.package.kinematic_joints.position[2] > -math.radians(25) and cdist < 0:
             # print(cdist,self.package.kinematic_joints.position[2])
-            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(5)*np.sign(cdist)
+            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(12)*np.sign(cdist)
+            print("turning right", self.kin.position[2], self.package.kinematic_joints.position[2])
             # self.velocity.twist.angular.z = 0.6
         else:
             self.velocity.twist.angular.z = 0.8*np.sign(cdist)
+            print("moving body")
             self.kin.position[2] = 0.0#self.package.kinematic_joints.position[2]-math.radians(1)*np.sign(cdist)
 
 
@@ -304,32 +294,32 @@ class LookMiro:
         #     self.velocity.twist.angular.z = 0.0
         #     pred_dist = None
         
-        if pred_dist is None:
-            self.velocity.twist.linear.x = 0.0
-        elif pred_dist > 1.1:
-            self.velocity.twist.linear.x = 0.15
-        elif pred_dist < 0.8:
-            self.velocity.twist.linear.x = -0.15
+        # if pred_dist is None:
+        #     self.velocity.twist.linear.x = 0.0
+        # elif pred_dist > 1.1:
+        #     self.velocity.twist.linear.x = 0.15
+        # elif pred_dist < 0.8:
+        #     self.velocity.twist.linear.x = -0.15
             
-        else: 
-            self.velocity.twist.linear.x = 0.0
+        # else: 
+        #     self.velocity.twist.linear.x = 0.0
         
 
-        self.pub_cmd_vel.publish(self.velocity)
+        self.interface.msg_cmd_vel.set(self.velocity,0.12)
         if abs(cdisty) < 20:
             pass
         elif cdisty > 0:
             if abs(self.package.kinematic_joints.position[3]) < math.radians(7):
                 self.kin.position[3] = np.clip(self.package.kinematic_joints.position[3]+math.radians(0.3), math.radians(-15), math.radians(30))
             else:
-                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]+math.radians(0.3), math.radians(30), math.radians(50))
+                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]+math.radians(0.3), math.radians(30), math.radians(55))
         else:
-            if abs(self.package.kinematic_joints.position[3]) < math.radians(25):
+            if abs(self.package.kinematic_joints.position[3]) < math.radians(35):
                 self.kin.position[3] = np.clip(self.package.kinematic_joints.position[3]-math.radians(0.3), math.radians(-15), math.radians(30))
             else:
-                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]-math.radians(0.3), math.radians(30), math.radians(50))
+                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]-math.radians(0.3), math.radians(20), math.radians(55))
         # self.kin.position[3] = np.clip(self.kin.position[3],math.radians(-15),math.radians(15))                    
-        self.pub_kin.publish(self.kin)
+        self.interface.msg_kin_joints.set(self.kin,0.12)
         # self.pub_cmd_vel2.publish(self.velocity2)
         
     def move_miro(self, *args):
