@@ -10,6 +10,7 @@ from nav_msgs.msg import Odometry
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 import numpy as np
+import onnxruntime as ort
 
 import math
 import miro2 as miro
@@ -53,11 +54,17 @@ class Helper():
         self.path = []
         self.prob_map_pos = None
         self.interface = miro.lib.RobotInterface()
+        self.image_converter = CvBridge()
+        mode_path = "best_new.onnx"
+        self.onnx_model = ort.InferenceSession(mode_path)
 
-        self.cameras = [None,None]
+        self.camera = [None,None]
         self.kin = JointState()
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
         self.kin.position = [0.0, math.radians(30.0), 0.0, math.radians(-10.0)]
+        self.sens_kin = JointState()
+        self.sens_kin.name = ["tilt", "lift", "yaw", "pitch"]
+        self.sens_kin.position = [0.0, math.radians(30.0), 0.0, math.radians(-10.0)]
         self.velocity = TwistStamped()
         self.input_package = None
         self.move_head = True
@@ -66,12 +73,16 @@ class Helper():
         self.map_pos = np.copy(self.map_start)
         robot_name = "/miro"
         self.miro_found = False
+        self.pred_dist = [None, None]
+        self.midpoints = [None, None]
+        self.angle_queue = []
+        self.distance_queue = []
+
 
         # Calls publishers and subscribers
         self.pub_cmd_vel = rospy.Publisher(robot_name + "/control/cmd_vel", TwistStamped, queue_size=10)
-        self.pub_kin = rospy.Publisher(robot_name + "/control/kinematic_joints", JointState, queue_size=10)
 
-
+        self.sub_kin = rospy.Publisher(robot_name + "/sensors/kinematic_joints", JointState, self.callback_kin, queue_size=10)
         self.sub_mics = rospy.Subscriber(robot_name + "/sensors/mics",
                     Int16MultiArray, self.callback_mics, queue_size=1, tcp_nodelay=True)
         self.sub_package = rospy.Subscriber(robot_name + "/sensors/package",
@@ -83,17 +94,28 @@ class Helper():
         self.sub_camr = rospy.Subscriber(robot_name + "/sensors/camr/compressed",
                 CompressedImage, self.callback_camr, queue_size=1, tcp_nodelay=True)
         
-        # self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+        self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
+        self.timer3 = rospy.Timer(rospy.Duration(5), self.detect_miro)
 
 
         # creating plots for visualisation
-        plt.subplot(221)
+        plt.figure()
+        plt.subplot(321)
         self.display = plt.imshow(self.prob_map, vmin=0,vmax=255)
-        plt.subplot(222)
+        plt.subplot(322)
         self.display2 = plt.imshow(self.prob_map, vmin=0,vmax=255)
-        plt.subplot(223)
+        plt.subplot(323)
         self.display3 = plt.imshow(self.prob_map, vmin=0,vmax=255)
+        plt.subplot(324)
+        self.display4 = plt.imshow(self.prob_map, vmin=0,vmax=255)
+        # plt.show(block=False)
+
+        # plt.figure()
+        plt.subplot(325)
+        self.camera_display1 = plt.imshow(np.array([[0.0]]), 'gray')
+        plt.subplot(326)
+        self.camera_display2 = plt.imshow(np.array([[0.0]]), 'gray')
         plt.show()
         
         
@@ -115,6 +137,10 @@ class Helper():
                 self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
                 self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
     
+    def callback_kin(self, kin):
+        if kin is not None:
+            self.sens_kin = kin
+
     def callback_mics(self, data):
         pass
     
@@ -123,14 +149,25 @@ class Helper():
     
     def callback_camr(self, ros_image):
         self.callback_cam(ros_image,1)
-        
-    def callback_cam(self, image, index):
-        pass
+
+    def callback_cam(self, ros_image, index):
+        # ignore empty frames which occur sometimes during parameter changes
+        if len(ros_image.data) == 0:
+            print("dropped empty camera frame")
+            return
+        try:
+            # convert compressed ROS image to raw CV image
+            image = self.image_converter.compressed_imgmsg_to_cv2(ros_image, "rgb8")
+            # store image for display
+            self.camera[index] = image
+        except CvBridgeError as e:
+            pass
     
     # continuously moves the head around to better guage it's surroundings
     def head_move(self, *args):
+        if self.miro_found: return
         if self.move_head:
-            self.kin.position[2] = self.input_package.kinematic_joints.position[2]+np.radians(self.head_direction)
+            self.kin.position[2] = self.sens_kin.position[2]+np.radians(self.head_direction)
         if abs(self.kin.position[2]) > np.radians(45):
             self.head_direction *= -1 # reverses the direction after hitting a limit
         # self.pub_kin.publish(self.kin)     
@@ -170,6 +207,7 @@ class Helper():
         Outputs: map
         """
         try:
+            if self.miro_found: return
             dist = self.input_package.sonar.range
             if self.starting_pose is None or self.pos is None:
                 return
@@ -183,8 +221,8 @@ class Helper():
             print(dist)
 
             # calculates the objects relative position
-            obj_vec = dist*np.array([np.cos(self.orientation+self.input_package.kinematic_joints.position[2]),
-                                        np.sin(self.orientation+self.input_package.kinematic_joints.position[2])])
+            obj_vec = dist*np.array([np.cos(self.orientation+self.sens_kin.position[2]),
+                                        np.sin(self.orientation+self.sens_kin.position[2])])
             
             # translates the object position into map coordinates
             map_coords = self.pos2map(*(obj_vec+self.pos))
@@ -355,7 +393,7 @@ class Helper():
             # checks if the robot is looking in the right direction
             if min(dists) < 0.3:
                 # self.velocity.twist.angular.z = 0.0
-                if dist < 0.4 and abs(self.input_package.kinematic_joints.position[2]) < 0.6:
+                if dist < 0.4 and abs(self.sens_kin.position[2]) < 0.6:
                     self.path = []
                     self.velocity.twist.linear.x = -0.2
                     self.move_head = False
@@ -389,27 +427,240 @@ class Helper():
             self.interface.msg_cmd_vel.set(self.velocity, 0.3)
         except Exception as e:
             print("exception",e)
+    
+
+    def letterbox(img, new_shape):
+        shape = img.shape[:2]  # current shape [height, width]
+        # Scale ratio (new / old)
+        r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+        # Compute padding
+        new_unpad = round(shape[1] * r), round(shape[0] * r)
+        dw, dh = (new_shape[1] - new_unpad[0]) / 2, (new_shape[0] - new_unpad[1]) / 2  # wh padding
+        if shape[::-1] != new_unpad:  # resize
+            img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
+        top, bottom = round(dh - 0.1), round(dh + 0.1)
+        left, right = round(dw - 0.1), round(dw + 0.1)
+        img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
+
+        return img, (top, left)
+
         
-        
-    def detect_miro(self):
+    def detect_miro(self, *args):
         """Uses computer vision to detect the miro
         Inputs: Camera
         Outputs: Bool
         """
+        self.miro_found = True
+        self.move_head = False
+        self.kin.position = [0.0, math.radians(50.0), math.radians(0), math.radians(-5.0)]
+
+        self.interface.msg_kin_joints.set(self.kin,3)
+        rospy.sleep(1)
+        for index, img in enumerate(self.camera):
+            classes = ["0","45","90","135","180","225","270","315"]
+            image = img.copy()
+            img_height, img_width = image.shape[:2]
+            # Convert the image color space from BGR to RGB
+            img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            img, pad = Helper.letterbox(img, (640, 640))
+
+            # Normalize the image data by dividing it by 255.0
+            image_data = np.array(img) / 255.0
+
+            # Transpose the image to have the channel dimension as the first dimension
+            image_data = np.transpose(image_data, (2, 0, 1))  # Channel first
+
+            # Expand the dimensions of the image data to match the expected input shape
+            image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
+            outputs = self.onnx_model.run(None, {"images": image_data})
+            results = outputs[0]
+            results = results.transpose()
+            res1 = np.argmax(results[:,4:])//8
+            result = results[res1]
+            conf = np.max(result[4:])
+            if conf > 0.5:
+                print("found miro")
+                self.timer3.shutdown()
+                self.timer4 = rospy.Timer(rospy.Duration(0.5), self.pose_detection)
+                self.timer5 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
+                break
+        else:
+            self.miro_found = False
+            self.kin.position = [0.0, math.radians(30.0), 0.0, math.radians(-10.0)]
+            self.move_head = True
+
     
-    def pose_detection(self):
+    def pose_detection(self, *args):
         """Uses computer vision to detect the pose of the miro
         Inputs: Pose, Camera
         Outputs: Pose
         """
+        if type(None) in map(type,self.camera):
+            return
+        try:
+            for index, img in enumerate(self.camera):
+                classes = ["0","45","90","135","180","225","270","315"]
+                image = img.copy()
+                img_height, img_width = image.shape[:2]
+                # Convert the image color space from BGR to RGB
+                img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                img, pad = Helper.letterbox(img, (640, 640))
+
+                # Normalize the image data by dividing it by 255.0
+                image_data = np.array(img) / 255.0
+
+                # Transpose the image to have the channel dimension as the first dimension
+                image_data = np.transpose(image_data, (2, 0, 1))  # Channel first
+
+                # Expand the dimensions of the image data to match the expected input shape
+                image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
+                outputs = self.onnx_model.run(None, {"images": image_data})
+                results = outputs[0]
+                results = results.transpose()
+                res1 = np.argmax(results[:,4:])//8
+                result = results[res1]
+                class_id = np.argmax(result[4:])
+                conf = np.max(result[4:])
+                dimentions = np.array([img_width,img_height])
+                padding = 640-dimentions/dimentions.max()*640
+                bbox = np.array([[result[0]-result[2]/2-padding[0]/2,result[0]+result[2]/2-padding[0]/2],
+                                [result[1]-result[3]/2-padding[1]/2,result[1]+result[3]/2-padding[1]/2]])
+                bbox = bbox.reshape(-1,2)*np.array([img_width/(640-padding[0]),img_height/(640-padding[1])]).reshape(1,2)
+                bbox = bbox.astype(int).T.reshape(-1)*640//img_width
+                # self.pos = np.array([self.pos.x,self.pos.y])
+                # other_vec = np.array([self.pos2.x,self.pos2.y])
+                pred_dist = np.sqrt(120/((bbox[3]-bbox[1])))/np.cos(self.sens_kin.position[2])
+
+                image = cv2.resize(image.copy(),(640,360))
+                cv2.rectangle(image, (bbox[0],bbox[1]),(bbox[2],bbox[3]),(255,0, 0),2)
+                cv2.putText(image,classes[class_id]+' '+f"{conf:.2f} {pred_dist:.2f}",(bbox[0],bbox[1]+20),
+                                cv2.FONT_HERSHEY_SIMPLEX,0.7,(255,0,0),2)            
+                if conf > 0.45:
+                    other_angle = (self.orientation+np.radians(int(classes[class_id]))-np.pi+self.sens_kin.position[2])%(np.pi*2)
+                    self.distance_queue.append(pred_dist)
+                    self.angle_queue.append(other_angle)
+                    if len(self.distance_queue) > 5:
+                        self.distance_queue = self.distance_queue[1:]
+                    if len(self.angle_queue) > 5:
+                        self.angle_queue = self.angle_queue[1:]
+                    # print(self.sens_kin.position[2])
+                    # print(bbox[3]-bbox[1],np.round(pred_dist,2) , np.round(np.linalg.norm(self.pos-other_vec),2), np.mean(self.distance_queue))
+                    avg_dist = np.mean(self.distance_queue)
+                    # print(np.round(self.pos,2))
+                    # print(classes[class_id], other_angle, np.round(self.pos.theta%(np.pi*2),2))
+                    # print(np.round(np.median(self.angle_queue),2), np.round(np.median(self.distance_queue),2))
+                    # print(np.round(self.pos.theta%(2*np.pi),2),np.round(np.linalg.norm(self.pos-other_vec),2))
+                    self.pred_dist[index] = np.mean(self.distance_queue)
+                    self.midpoints[index] = np.array([bbox[2]+bbox[0],bbox[3]+bbox[1]])/2
+                else:
+                    self.pred_dist[index] = None
+                    self.midpoints[index] = None
+                if index == 0:
+                    self.camera_display1.set_data(image)#
+                else:
+                    self.camera_display2.set_data(image)#
+        except Exception as e:
+            print("unexpected error occured", e)
+        plt.draw()
     
-    def Astar(self):
+    def look_miro(self, *args):
+        if type(self.camera[0]) == type(None):
+            return
+        
+        h,w,_ = self.camera[0].shape        
+        cdist = 0
+        cdisty = 0
+        # print(self.midpoints)
+        if type(self.midpoints[0]) != type(None) and type(self.midpoints[1]) != type(None):
+            cdist = ((3*w/4 - self.midpoints[0][0])+(w/4 - self.midpoints[1][0]))/2
+            cdisty = ((h - self.midpoints[0][1]- self.midpoints[1][1]))/2
+        elif type(self.midpoints[0]) != type(None):
+            cdist = 3*w/4 - self.midpoints[0][0]
+            cdisty = h/2 - self.midpoints[0][1]
+        elif type(self.midpoints[1]) != type(None):
+            cdist = w/4 - self.midpoints[1][0]
+            cdisty = h/2 - self.midpoints[1][1]
+        # print(cdist,cdisty)
+        
+        pred_dist = None
+        if abs(cdist) > 70:
+            self.pred_pos = None
+        if abs(cdist) < 50:
+            self.velocity.twist.angular.z = 0.0
+            if self.pred_dist[0] is not None and self.pred_dist[1] is not None:
+                pred_dist = np.mean(self.pred_dist)
+            elif self.pred_dist[0] is not None:
+                pred_dist = self.pred_dist[0]
+            elif self.pred_dist[1] is not None:
+                pred_dist = self.pred_dist[1]
+            
+            if len(self.angle_queue) > 0 and pred_dist is not None:
+                self.pred_angle = np.median(self.angle_queue)
+                self.pred_pos = self.pos+pred_dist*np.array([np.cos(self.orientation+ self.sens_kin.position[2]),
+                                                            np.sin(self.orientation+self.sens_kin.position[2])])
+                print("pos", self.pred_pos.round(2))
+                # print("real pos", np.round([self.pos.x,self.pos.y],2))
+        elif self.sens_kin.position[2] < math.radians(25) and cdist > 0:
+            self.kin.position[2] = self.sens_kin.position[2]+math.radians(15)
+            print("turning left",self.sens_kin.position[2])
+        elif self.sens_kin.position[2] > -math.radians(25) and cdist < 0:
+            # print(cdist,self.sens_kin.position[2])
+            self.kin.position[2] = self.sens_kin.position[2]+math.radians(15)*np.sign(cdist)
+            print("turning right", self.kin.position[2], self.sens_kin.position[2])
+            # self.velocity.twist.angular.z = 0.6
+        else:
+            self.velocity.twist.angular.z = 1.8*np.sign(cdist)
+            print("moving body")
+            self.kin.position[2] = 0.0#self.sens_kin.position[2]-math.radians(1)*np.sign(cdist)
+
+
+            # self.kin.position[2] = self.sens_kin.position[2]-math.radians(1)
+            # self.velocity.twist.angular.z = -0.6
+        # else:
+        #     self.velocity.twist.angular.z = 0.0
+        #     pred_dist = None
+        
+        print("pred dist: ", pred_dist)
+        if pred_dist is None:
+            self.velocity.twist.linear.x = 0.0
+        elif pred_dist > 0.9:
+            print("moving forwards")
+            self.velocity.twist.linear.x = 0.15
+        elif pred_dist < 0.7:
+            print("moving backwards")
+            self.velocity.twist.linear.x = -0.15
+            
+        else: 
+            self.velocity.twist.linear.x = 0.0
+        
+
+        self.interface.msg_cmd_vel.set(self.velocity,0.1)
+        if abs(cdisty) < 20:
+            pass
+        elif cdisty < 0:
+            print("looking down", self.sens_kin.position[3], math.radians(7))
+            if self.sens_kin.position[3] < math.radians(7):
+                self.kin.position[3] = np.clip(self.sens_kin.position[3]+math.radians(5), math.radians(-15), math.radians(5))
+            else:
+                self.kin.position[1] = np.clip(self.sens_kin.position[1]+math.radians(10), math.radians(30), math.radians(55))
+        else:
+            print("looking up")
+            if self.sens_kin.position[3] > -math.radians(15):
+                self.kin.position[3] = np.clip(self.sens_kin.position[3]-math.radians(5), math.radians(-15), math.radians(5))
+            else:
+                self.kin.position[1] = np.clip(self.sens_kin.position[1]-math.radians(10), math.radians(20), math.radians(55))
+        # self.kin.position[3] = np.clip(self.kin.position[3],math.radians(-15),math.radians(15))                    
+        self.interface.msg_kin_joints.set(self.kin,0.1)
+        # self.pub_cmd_vel2.publish(self.velocity2)
+
+
+    def Astar(self, *args):
         """Uses A* to determine the miro's next path
         Inputs: Map
         Outputs: Path
         """
         
-    def send_audio(self):
+    def send_audio(self, *args):
         """Send audio signal
         Inputs: Command
         Outputs: Audio

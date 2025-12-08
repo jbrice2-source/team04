@@ -86,7 +86,7 @@ class LookMiro:
         self.timer = rospy.Timer(rospy.Duration(0.5), self.match_image)
         
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
-        # self.timer3 = rospy.Timer(rospy.Duration(1.0), self.move_miro)
+        self.timer3 = rospy.Timer(rospy.Duration(1.0), self.move_miro)
         # self.timer4 = rospy.Timer(rospy.Duration(0.1), self.vel_publish)
 
 
@@ -140,17 +140,12 @@ class LookMiro:
     def match_image(self, *args):
         if type(None) in map(type,self.camera):
             return
-
         for index, img in enumerate(self.camera):
-
             classes = ["0","45","90","135","180","225","270","315"]
             image = img.copy()
-            
             img_height, img_width = image.shape[:2]
-
             # Convert the image color space from BGR to RGB
             img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
             img, pad = LookMiro.letterbox(img, (640, 640))
 
             # Normalize the image data by dividing it by 255.0
@@ -161,37 +156,27 @@ class LookMiro:
 
             # Expand the dimensions of the image data to match the expected input shape
             image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
-
             outputs = self.onnx_model.run(None, {"images": image_data})
-
             results = outputs[0]
             results = results.transpose()
-
             res1 = np.argmax(results[:,4:])//8
             result = results[res1]
-
             class_id = np.argmax(result[4:])
             conf = np.max(result[4:])
-
             dimentions = np.array([img_width,img_height])
             padding = 640-dimentions/dimentions.max()*640
-
             bbox = np.array([[result[0]-result[2]/2-padding[0]/2,result[0]+result[2]/2-padding[0]/2],
                             [result[1]-result[3]/2-padding[1]/2,result[1]+result[3]/2-padding[1]/2]])
             bbox = bbox.reshape(-1,2)*np.array([img_width/(640-padding[0]),img_height/(640-padding[1])]).reshape(1,2)
             bbox = bbox.astype(int).T.reshape(-1)*640//img_width
-
             pos_vec = np.array([self.pos.x,self.pos.y])
             other_vec = np.array([self.pos2.x,self.pos2.y])
-            pred_dist = np.sqrt(90/((bbox[3]-bbox[1])))/np.cos(self.package.kinematic_joints.position[2])
+            pred_dist = np.sqrt(120/((bbox[3]-bbox[1])))/np.cos(self.package.kinematic_joints.position[2])
 
             image = cv2.resize(image.copy(),(640,360))
             cv2.rectangle(image, (bbox[0],bbox[1]),(bbox[2],bbox[3]),(255,0, 0),2)
             cv2.putText(image,classes[class_id]+' '+f"{conf:.2f} {pred_dist:.2f}",(bbox[0],bbox[1]+20),
-                            cv2.FONT_HERSHEY_SIMPLEX,0.7,(255,0,0),2)
-            # print(conf, index)
-
-            
+                            cv2.FONT_HERSHEY_SIMPLEX,0.7,(255,0,0),2)            
             if conf > 0.45:
                 other_angle = (self.pos2.theta+np.radians(int(classes[class_id]))-np.pi+self.package.kinematic_joints.position[2])%(np.pi*2)
                 self.distance_queue.append(pred_dist)
@@ -253,12 +238,12 @@ class LookMiro:
         elif type(self.midpoints[1]) != type(None):
             cdist = w/4 - self.midpoints[1][0]
             cdisty = h/2 - self.midpoints[1][1]
-        print(cdist,cdisty)
+        # print(cdist,cdisty)
         
         pred_dist = None
-        if abs(cdist) > 100:
+        if abs(cdist) > 70:
             self.pred_pos = None
-        if abs(cdist) < 70:
+        if abs(cdist) < 50:
             self.velocity.twist.angular.z = 0.0
             if self.pred_dist[0] is not None and self.pred_dist[1] is not None:
                 pred_dist = np.mean(self.pred_dist)
@@ -275,15 +260,15 @@ class LookMiro:
                 print("pos", self.pred_pos.round(2))
                 # print("real pos", np.round([self.pos.x,self.pos.y],2))
         elif self.package.kinematic_joints.position[2] < math.radians(25) and cdist > 0:
-            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(12)
+            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(15)
             print("turning left",self.package.kinematic_joints.position[2])
         elif self.package.kinematic_joints.position[2] > -math.radians(25) and cdist < 0:
             # print(cdist,self.package.kinematic_joints.position[2])
-            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(12)*np.sign(cdist)
+            self.kin.position[2] = self.package.kinematic_joints.position[2]+math.radians(15)*np.sign(cdist)
             print("turning right", self.kin.position[2], self.package.kinematic_joints.position[2])
             # self.velocity.twist.angular.z = 0.6
         else:
-            self.velocity.twist.angular.z = 0.8*np.sign(cdist)
+            self.velocity.twist.angular.z = 1.8*np.sign(cdist)
             print("moving body")
             self.kin.position[2] = 0.0#self.package.kinematic_joints.position[2]-math.radians(1)*np.sign(cdist)
 
@@ -294,43 +279,46 @@ class LookMiro:
         #     self.velocity.twist.angular.z = 0.0
         #     pred_dist = None
         
-        # if pred_dist is None:
-        #     self.velocity.twist.linear.x = 0.0
-        # elif pred_dist > 1.1:
-        #     self.velocity.twist.linear.x = 0.15
-        # elif pred_dist < 0.8:
-        #     self.velocity.twist.linear.x = -0.15
+        # print("pred dist: ", pred_dist)
+        if pred_dist is None:
+            self.velocity.twist.linear.x = 0.0
+        elif pred_dist > 0.9:
+            self.velocity.twist.linear.x = 0.15
+        elif pred_dist < 0.7:
+            self.velocity.twist.linear.x = -0.15
             
-        # else: 
-        #     self.velocity.twist.linear.x = 0.0
+        else: 
+            self.velocity.twist.linear.x = 0.0
         
 
-        self.interface.msg_cmd_vel.set(self.velocity,0.12)
+        self.interface.msg_cmd_vel.set(self.velocity,0.1)
         if abs(cdisty) < 20:
             pass
-        elif cdisty > 0:
-            if abs(self.package.kinematic_joints.position[3]) < math.radians(7):
-                self.kin.position[3] = np.clip(self.package.kinematic_joints.position[3]+math.radians(0.3), math.radians(-15), math.radians(30))
+        elif cdisty < 0:
+            print("looking down", self.package.kinematic_joints.position[3], math.radians(5))
+            if self.package.kinematic_joints.position[3] < math.radians(5):
+                self.kin.position[3] = np.clip(self.package.kinematic_joints.position[3]+math.radians(5), math.radians(-15), math.radians(5))
             else:
-                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]+math.radians(0.3), math.radians(30), math.radians(55))
+                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]+math.radians(10), math.radians(30), math.radians(55))
         else:
-            if abs(self.package.kinematic_joints.position[3]) < math.radians(35):
-                self.kin.position[3] = np.clip(self.package.kinematic_joints.position[3]-math.radians(0.3), math.radians(-15), math.radians(30))
+            print("looking up")
+            if self.package.kinematic_joints.position[3] > -math.radians(15):
+                self.kin.position[3] = np.clip(self.package.kinematic_joints.position[3]-math.radians(5), math.radians(-15), math.radians(5))
             else:
-                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]-math.radians(0.3), math.radians(20), math.radians(55))
+                self.kin.position[1] = np.clip(self.package.kinematic_joints.position[1]-math.radians(10), math.radians(20), math.radians(55))
         # self.kin.position[3] = np.clip(self.kin.position[3],math.radians(-15),math.radians(15))                    
-        self.interface.msg_kin_joints.set(self.kin,0.12)
+        self.interface.msg_kin_joints.set(self.kin,0.1)
         # self.pub_cmd_vel2.publish(self.velocity2)
         
     def move_miro(self, *args):
         if self.pred_pos is None or len(self.other_path)==0:
             self.velocity2.twist.linear.x = 0.0
             self.velocity2.twist.angular.z = 0.0
-            self.pub_cmd_vel2.publish(self.velocity2)
+            # self.pub_cmd_vel2.publish(self.velocity2)
             print("Path finished")
             return
-        target_pos = self.other_path[0]#np.array([1.0,0.0])
-        self.velocity2.twist.linear.x = 0.1
+        target_pos = self.other_path[0]+np.array([-1.0,0.0])
+        self.velocity2.twist.linear.x = 0.15
         target = np.arctan2(target_pos[1]-self.pred_pos[1],target_pos[0]-self.pred_pos[0])
         
         # calculates the differance in angle between current and target
@@ -346,18 +334,20 @@ class LookMiro:
         # checks if the robot is looking in the right direction
         elif min(dists) < 0.5:
             self.velocity2.twist.angular.z = 0.0
-            self.pub_cmd_vel2.publish(self.velocity2)
+            print("angle found")
+            # self.pub_cmd_vel2.publish(self.velocity2)
         # moves clockwise if the right angle is lower
         elif dists[0] >= dists[1]:
             self.velocity2.twist.angular.z = 0.5
             self.velocity2.twist.linear.x = 0.01
-            # print("turning left")
+            print("turning left")
         # moves counter clockwise otherwise
         else:
             self.velocity2.twist.angular.z = -0.5
             self.velocity2.twist.linear.x = 0.01
+            print("turning right")
 
-        self.pub_cmd_vel2.publish(self.velocity2)
+        # self.pub_cmd_vel2.publish(self.velocity2)
         
         
     def loop(self):
