@@ -84,7 +84,7 @@ class Helper():
         # Calls publishers and subscribers
         self.pub_cmd_vel = rospy.Publisher(robot_name + "/control/cmd_vel", TwistStamped, queue_size=10)
 
-        self.sub_kin = rospy.Publisher(robot_name + "/sensors/kinematic_joints", JointState, self.callback_kin, queue_size=10)
+        self.sub_kin = rospy.Subscriber(robot_name + "/sensors/kinematic_joints", JointState, self.callback_kin, queue_size=10)
         self.sub_mics = rospy.Subscriber(robot_name + "/sensors/mics",
                     Int16MultiArray, self.callback_mics, queue_size=1, tcp_nodelay=True)
         self.sub_package = rospy.Subscriber(robot_name + "/sensors/package",
@@ -96,9 +96,9 @@ class Helper():
         self.sub_camr = rospy.Subscriber(robot_name + "/sensors/camr/compressed",
                 CompressedImage, self.callback_camr, queue_size=1, tcp_nodelay=True)
         
-        # self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+        self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
-        # self.timer3 = rospy.Timer(rospy.Duration(3), self.detect_miro)
+        self.timer3 = rospy.Timer(rospy.Duration(3), self.detect_miro)
 
 
         # creating plots for visualisation
@@ -135,9 +135,9 @@ class Helper():
     def callback_package(self, package):
         if package is not None:
             self.input_package = package
-            # if not hasattr(self, 'obstacle_timer'):
-            #     self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
-            #     self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
+            if not hasattr(self, 'obstacle_timer'):
+                self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+                self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
     
     def callback_kin(self, kin):
         print(kin)
