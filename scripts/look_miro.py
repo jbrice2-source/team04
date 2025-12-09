@@ -268,7 +268,7 @@ class LookMiro:
             print("turning right", self.kin.position[2], self.package.kinematic_joints.position[2])
             # self.velocity.twist.angular.z = 0.6
         else:
-            self.velocity.twist.angular.z = 1.8*np.sign(cdist)
+            self.velocity.twist.angular.z = 1.0*np.sign(cdist)
             print("moving body")
             self.kin.position[2] = 0.0#self.package.kinematic_joints.position[2]-math.radians(1)*np.sign(cdist)
 
@@ -283,9 +283,9 @@ class LookMiro:
         if pred_dist is None:
             self.velocity.twist.linear.x = 0.0
         elif pred_dist > 0.9:
-            self.velocity.twist.linear.x = 0.15
+            self.velocity.twist.linear.x = 0.1
         elif pred_dist < 0.7:
-            self.velocity.twist.linear.x = -0.15
+            self.velocity.twist.linear.x = -0.1
             
         else: 
             self.velocity.twist.linear.x = 0.0

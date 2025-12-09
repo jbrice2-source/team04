@@ -61,10 +61,10 @@ class Helper():
         self.camera = [None,None]
         self.kin = JointState()
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.kin.position = [0.0, math.radians(30.0), 0.0, math.radians(-10.0)]
+        self.kin.position = [0.0, math.radians(35.0), 0.0, math.radians(-10.0)]
         self.sens_kin = JointState()
         self.sens_kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.sens_kin.position = [0.0, math.radians(30.0), 0.0, math.radians(-10.0)]
+        self.sens_kin.position = [0.0, math.radians(35.0), 0.0, math.radians(-10.0)]
         self.velocity = TwistStamped()
         self.input_package = None
         self.move_head = True
@@ -77,6 +77,8 @@ class Helper():
         self.midpoints = [None, None]
         self.angle_queue = []
         self.distance_queue = []
+        self.pred_pos = None
+
 
 
         # Calls publishers and subscribers
@@ -94,9 +96,9 @@ class Helper():
         self.sub_camr = rospy.Subscriber(robot_name + "/sensors/camr/compressed",
                 CompressedImage, self.callback_camr, queue_size=1, tcp_nodelay=True)
         
-        self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+        # self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
-        self.timer3 = rospy.Timer(rospy.Duration(5), self.detect_miro)
+        # self.timer3 = rospy.Timer(rospy.Duration(3), self.detect_miro)
 
 
         # creating plots for visualisation
@@ -133,13 +135,14 @@ class Helper():
     def callback_package(self, package):
         if package is not None:
             self.input_package = package
-            if not hasattr(self, 'obstacle_timer'):
-                self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
-                self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
+            # if not hasattr(self, 'obstacle_timer'):
+            #     self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+            #     self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
     
     def callback_kin(self, kin):
+        print(kin)
         if kin is not None:
-            self.sens_kin = kin
+            self.sens_kin.position = kin.position
 
     def callback_mics(self, data):
         pass
@@ -166,12 +169,13 @@ class Helper():
     # continuously moves the head around to better guage it's surroundings
     def head_move(self, *args):
         if self.miro_found: return
+        print(self.kin.position[2])
         if self.move_head:
             self.kin.position[2] = self.sens_kin.position[2]+np.radians(self.head_direction)
-        if abs(self.kin.position[2]) > np.radians(45):
-            self.head_direction *= -1 # reverses the direction after hitting a limit
+            if abs(self.kin.position[2]) > np.radians(30):
+                self.head_direction *= -1 # reverses the direction after hitting a limit
         # self.pub_kin.publish(self.kin)     
-        self.interface.msg_kin_joints.set(self.kin,0.1)
+            self.interface.msg_kin_joints.set(self.kin,0.1)
     
     # function to increase the probability that a given cell is full
     def increase_prob(cells, is_full,dist):
@@ -240,10 +244,10 @@ class Helper():
                             min(cur_map[1]+OBSTACLE_SIZE+1,self.prob_map.shape[1])]
                     self.prob_map[coords[0]:coords[1],coords[2]:coords[3]] = Helper.increase_prob(self.prob_map[coords[0]:coords[1],coords[2]:coords[3]],False,dist)
             if dist < 0.6: 
-                selected_map = self.prob_map[max(map_coords[0]-OBSTACLE_SIZE,0):min(map_coords[0]+OBSTACLE_SIZE+1,self.prob_map.shape[0]),
-                                        max(map_coords[1]-OBSTACLE_SIZE,0):min(map_coords[1]+OBSTACLE_SIZE+1,self.prob_map.shape[1])]
-                self.prob_map[max(map_coords[0]-OBSTACLE_SIZE,0):min(map_coords[0]+OBSTACLE_SIZE+1,self.prob_map.shape[0]),
-                        max(map_coords[1]-OBSTACLE_SIZE,0):min(map_coords[1]+OBSTACLE_SIZE+1,self.prob_map.shape[1])] = Helper.increase_prob(selected_map,True,0)
+                selected_map = self.prob_map[max(map_coords[0]-OBSTACLE_SIZE-1,0):min(map_coords[0]+OBSTACLE_SIZE+2,self.prob_map.shape[0]),
+                                        max(map_coords[1]-OBSTACLE_SIZE-1,0):min(map_coords[1]+OBSTACLE_SIZE+2,self.prob_map.shape[1])]
+                self.prob_map[max(map_coords[0]-OBSTACLE_SIZE-1,0):min(map_coords[0]+OBSTACLE_SIZE+2,self.prob_map.shape[0]),
+                        max(map_coords[1]-OBSTACLE_SIZE-1,0):min(map_coords[1]+OBSTACLE_SIZE+2,self.prob_map.shape[1])] = Helper.increase_prob(selected_map,True,0)
                 
             # draws in the graph
             if self.display is not None:
@@ -405,7 +409,7 @@ class Helper():
                     print("moving forwards")
             else:
                 self.velocity.twist.linear.x = 0.0
-
+                self.move_head = True
 
 
                 # self.interface.msg_cmd_vel.set(self.velocity, 0.5)
@@ -454,8 +458,8 @@ class Helper():
         self.move_head = False
         self.kin.position = [0.0, math.radians(50.0), math.radians(0), math.radians(-5.0)]
 
-        self.interface.msg_kin_joints.set(self.kin,3)
-        rospy.sleep(1)
+        self.interface.msg_kin_joints.set(self.kin,0.5)
+        rospy.sleep(0.2)
         for index, img in enumerate(self.camera):
             classes = ["0","45","90","135","180","225","270","315"]
             image = img.copy()
@@ -483,6 +487,7 @@ class Helper():
                 self.timer3.shutdown()
                 self.timer4 = rospy.Timer(rospy.Duration(0.5), self.pose_detection)
                 self.timer5 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
+                self.timer5 = rospy.Timer(rospy.Duration(0.5), self.move_miro)
                 break
         else:
             self.miro_found = False
@@ -609,7 +614,7 @@ class Helper():
             print("turning right", self.kin.position[2], self.sens_kin.position[2])
             # self.velocity.twist.angular.z = 0.6
         else:
-            self.velocity.twist.angular.z = 1.8*np.sign(cdist)
+            self.velocity.twist.angular.z = 1.0*np.sign(cdist)
             print("moving body")
             self.kin.position[2] = 0.0#self.sens_kin.position[2]-math.radians(1)*np.sign(cdist)
 
@@ -625,11 +630,11 @@ class Helper():
             self.velocity.twist.linear.x = 0.0
         elif pred_dist > 0.9:
             print("moving forwards")
-            self.velocity.twist.linear.x = 0.15
+            self.velocity.twist.linear.x = 0.1
         elif pred_dist < 0.7:
             print("moving backwards")
-            self.velocity.twist.linear.x = -0.15
-            
+            self.velocity.twist.linear.x = -0.1
+        
         else: 
             self.velocity.twist.linear.x = 0.0
         
@@ -638,18 +643,18 @@ class Helper():
         if abs(cdisty) < 20:
             pass
         elif cdisty < 0:
-            print("looking down", self.sens_kin.position[3], math.radians(7))
-            if self.sens_kin.position[3] < math.radians(7):
-                self.kin.position[3] = np.clip(self.sens_kin.position[3]+math.radians(5), math.radians(-15), math.radians(5))
+            print("looking down", self.sens_kin.position[3], math.radians(2))
+            if self.sens_kin.position[3] < math.radians(2):
+                self.kin.position[3] = np.clip(self.sens_kin.position[3]+math.radians(5), math.radians(-5), math.radians(5))
             else:
-                self.kin.position[1] = np.clip(self.sens_kin.position[1]+math.radians(10), math.radians(30), math.radians(55))
+                self.kin.position[1] = np.clip(self.sens_kin.position[1]+math.radians(10), math.radians(45), math.radians(60))
         else:
             print("looking up")
-            if self.sens_kin.position[3] > -math.radians(15):
-                self.kin.position[3] = np.clip(self.sens_kin.position[3]-math.radians(5), math.radians(-15), math.radians(5))
+            if self.sens_kin.position[3] > -math.radians(10):
+                self.kin.position[3] = np.clip(self.sens_kin.position[3]-math.radians(5), math.radians(-5), math.radians(5))
             else:
-                self.kin.position[1] = np.clip(self.sens_kin.position[1]-math.radians(10), math.radians(20), math.radians(55))
-        # self.kin.position[3] = np.clip(self.kin.position[3],math.radians(-15),math.radians(15))                    
+                self.kin.position[1] = np.clip(self.sens_kin.position[1]-math.radians(10), math.radians(45), math.radians(60))
+        # self.kin.position[3] = np.clip(self.kin.position[3],math.radians(-15),math.radians(15))                   
         self.interface.msg_kin_joints.set(self.kin,0.1)
         # self.pub_cmd_vel2.publish(self.velocity2)
 
@@ -660,11 +665,49 @@ class Helper():
         Outputs: Path
         """
         
+    def move_miro(self, *args):
+        if self.pred_pos is None or len(self.other_path)==0:
+            # self.velocity2.twist.linear.x = 0.0
+            # self.velocity2.twist.angular.z = 0.0
+            # self.pub_cmd_vel2.publish(self.velocity2)
+            print("Path finished")
+            return
+        target_pos = self.map2pos(self.map_start[0],self.map_start[1])#self.other_path[0]+np.array([-1.0,0.0])
+        # self.velocity2.twist.linear.x = 0.15
+        target = np.arctan2(target_pos[1]-self.pred_pos[1],target_pos[0]-self.pred_pos[0])
+        
+        # calculates the differance in angle between current and target
+        dists = [(self.pred_angle%(2*np.pi)-target%(2*np.pi))%(2*np.pi),(target%(2*np.pi)-self.pred_angle%(2*np.pi))%(2*np.pi)]
+
+        # checks if the robot is close to the next node in the path 
+        if np.linalg.norm(target_pos-self.pred_pos) < 0.3:
+            # self.velocity2.twist.linear.x = 0.0
+            # self.velocity2.twist.angular.z = 0.0
+            self.other_path = self.other_path[1:]
+            print("goal found")
+        
+        # checks if the robot is looking in the right direction
+        elif min(dists) < 0.5:
+            # self.velocity2.twist.angular.z = 0.0
+            print("angle found")
+            # self.pub_cmd_vel2.publish(self.velocity2)
+        # moves clockwise if the right angle is lower
+        elif dists[0] >= dists[1]:
+            # self.velocity2.twist.angular.z = 0.5
+            # self.velocity2.twist.linear.x = 0.01
+            print("turning left")
+        # moves counter clockwise otherwise
+        else:
+            # self.velocity2.twist.angular.z = -0.5
+            # self.velocity2.twist.linear.x = 0.01
+            print("turning right")
+
     def send_audio(self, *args):
         """Send audio signal
         Inputs: Command
         Outputs: Audio
         """
+        
     
     
 if __name__ == '__main__':
