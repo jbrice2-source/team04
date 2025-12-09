@@ -83,6 +83,9 @@ class Helper():
 
         # Calls publishers and subscribers
         self.pub_cmd_vel = rospy.Publisher(robot_name + "/control/cmd_vel", TwistStamped, queue_size=10)
+        self.pub_tone = rospy.Publisher(robot_name + "control/tone", UInt16MultiArray,queue_size=1)
+
+
 
         self.sub_kin = rospy.Subscriber(robot_name + "/sensors/kinematic_joints", JointState, self.callback_kin, queue_size=10)
         self.sub_mics = rospy.Subscriber(robot_name + "/sensors/mics",
@@ -488,6 +491,7 @@ class Helper():
                 self.timer4 = rospy.Timer(rospy.Duration(0.5), self.pose_detection)
                 self.timer5 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
                 self.timer5 = rospy.Timer(rospy.Duration(0.5), self.move_miro)
+                self.send_audio("found")
                 break
         else:
             self.miro_found = False
@@ -666,11 +670,13 @@ class Helper():
         """
         
     def move_miro(self, *args):
+        """Determines what signals to give the miro
+        """
         if self.pred_pos is None or len(self.other_path)==0:
             # self.velocity2.twist.linear.x = 0.0
             # self.velocity2.twist.angular.z = 0.0
             # self.pub_cmd_vel2.publish(self.velocity2)
-            print("Path finished")
+            self.send_audio("stop")
             return
         target_pos = self.map2pos(self.map_start[0],self.map_start[1])#self.other_path[0]+np.array([-1.0,0.0])
         # self.velocity2.twist.linear.x = 0.15
@@ -684,31 +690,42 @@ class Helper():
             # self.velocity2.twist.linear.x = 0.0
             # self.velocity2.twist.angular.z = 0.0
             self.other_path = self.other_path[1:]
-            print("goal found")
+            self.send_audio("stop")
         
         # checks if the robot is looking in the right direction
         elif min(dists) < 0.5:
             # self.velocity2.twist.angular.z = 0.0
-            print("angle found")
+            self.send_audio("forwards")
             # self.pub_cmd_vel2.publish(self.velocity2)
         # moves clockwise if the right angle is lower
         elif dists[0] >= dists[1]:
             # self.velocity2.twist.angular.z = 0.5
             # self.velocity2.twist.linear.x = 0.01
-            print("turning left")
+            self.send_audio("turn left")
         # moves counter clockwise otherwise
         else:
             # self.velocity2.twist.angular.z = -0.5
             # self.velocity2.twist.linear.x = 0.01
-            print("turning right")
+            # print("turning right")
+            self.send_audio("turn right")
 
-    def send_audio(self, *args):
+    def send_audio(self, command):
         """Send audio signal
         Inputs: Command
         Outputs: Audio
         """
-        
-    
+        msg = UInt16MultiArray
+        if command == "found":
+            msg.data = [800, 128, 1000]
+        elif command == "forwards":
+            msg.data = [1200, 128, 1000]
+        elif command == "stop":
+            msg.data = [1600, 128, 1000]
+        elif command == "turn left":
+            msg.data = [2000, 128, 1000]
+        elif command == "turn right":
+            msg.data = [2400, 128, 1000]
+        self.pub_tone.publish(msg)
     
 if __name__ == '__main__':
     main = Helper()
