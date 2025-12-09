@@ -199,7 +199,8 @@ class Explore:
         if self.pos is not None and pose is not None:
             pos_vec = np.array([self.pos.x, self.pos.y])
             other_vec = np.array([pose.x,pose.y])
-            self.other_pos = pose
+            self.other_pos.x = pose.x
+            self.other_pos.y = pose.y
             distance = np.linalg.norm(pos_vec-other_vec)
             
             if self.other_map_pos is not None:        
@@ -429,7 +430,8 @@ class Explore:
         self.pub_cmd_vel.publish(self.velocity)
     
     def make_sound(self,*args):
-        action = self.astar_path.pop
+        action = self.astar_path.pop()
+        print("action", action[0])
         #North
         if(action[1] == radians(360)):
             msg = UInt16MultiArray
@@ -466,6 +468,8 @@ class Explore:
             msg = UInt16MultiArray
             msg.data = [2400, 128, 1000]
             self.pub_tone.publish(msg)
+        else:
+            return
             
     #Creates path
     def tracePath(self, cellDetails,goal):
@@ -493,13 +497,20 @@ class Explore:
             path.append(dir)
         self.astar_path = path
         return
+    
+    #Check if the move is possible
+    def isUnblocked(self,row,col,grid):
+        return not grid[row][col] < 150    
+
+    def isValid(self,row, col,width,height):
+        return (row >= 0) and (row < width) and (col >= 0) and (col < height)
 
     #A-Star search implementation
     def aStarSearch(self):
         start = self.pos.x,self.pos.y
         goal = self.other_pos.x,self.other_pos.y
-        width = 80
-        height = 80 
+        width = MAP_SIZE
+        height = MAP_SIZE
         grid = self.map
         if not self.isValid(start[0],start[1],width,height) or not self.isValid(goal[0],goal[1],width,height):
             return "Source or destinaton is invalid"
