@@ -238,7 +238,7 @@ class LookMiro:
         elif type(self.midpoints[1]) != type(None):
             cdist = w/4 - self.midpoints[1][0]
             cdisty = h/2 - self.midpoints[1][1]
-        # print(cdist,cdisty)
+        print(cdist,cdisty)
         
         pred_dist = None
         if abs(cdist) > 70:

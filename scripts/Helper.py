@@ -26,9 +26,9 @@ import heapq
 
 droop, wag, left_eye, right_eye, left_ear, right_ear = range(6)
 
-MAP_SCALE = 20
-MAP_SIZE = 200
-OBSTACLE_SIZE=2
+MAP_SCALE = 10
+MAP_SIZE = 50
+OBSTACLE_SIZE=0
 BODY_SIZE=1
 
 
@@ -78,6 +78,7 @@ class Helper():
         self.angle_queue = []
         self.distance_queue = []
         self.pred_pos = None
+        self.pred_map_pos = None
 
 
 
@@ -102,7 +103,6 @@ class Helper():
         self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
         self.timer3 = rospy.Timer(rospy.Duration(3), self.detect_miro)
-
 
         # creating plots for visualisation
         plt.figure()
@@ -143,9 +143,8 @@ class Helper():
                 self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
     
     def callback_kin(self, kin):
-        print(kin)
         if kin is not None:
-            self.sens_kin.position = kin.position
+            self.sens_kin = kin
 
     def callback_mics(self, data):
         pass
@@ -172,7 +171,6 @@ class Helper():
     # continuously moves the head around to better guage it's surroundings
     def head_move(self, *args):
         if self.miro_found: return
-        print(self.kin.position[2])
         if self.move_head:
             self.kin.position[2] = self.sens_kin.position[2]+np.radians(self.head_direction)
             if abs(self.kin.position[2]) > np.radians(30):
@@ -201,7 +199,7 @@ class Helper():
     # function to calculate map coordinates from pose coordinates
     def pos2map(self, posx, posy):
         return np.clip(np.array([self.map_start[0]-round((posx-self.starting_pose[0])*MAP_SCALE),
-                self.map_start[1]-round((posy-self.starting_pose[1])*MAP_SCALE)],dtype=int),0,MAP_SIZE)
+                self.map_start[1]-round((posy-self.starting_pose[1])*MAP_SCALE)],dtype=int),0,MAP_SIZE-1)
         
     # function to translate map coordinates into pose coordinates
     def map2pos(self, mapx, mapy):
@@ -254,7 +252,9 @@ class Helper():
                 
             # draws in the graph
             if self.display is not None:
-                self.display.set_data(self.prob_map)
+                display_map = cv2.cvtColor(self.prob_map,cv2.COLOR_GRAY2RGB)
+                display_map[self.map_pos[0],self.map_pos[1]] = np.array([255,0,0])
+                self.display.set_data(display_map)
                 plt.draw()
         except Exception as e:
             print(e)
@@ -459,11 +459,11 @@ class Helper():
         """
         self.miro_found = True
         self.move_head = False
-        self.kin.position = [0.0, math.radians(50.0), math.radians(0), math.radians(-5.0)]
-
-        self.interface.msg_kin_joints.set(self.kin,0.5)
-        rospy.sleep(0.2)
-        for index, img in enumerate(self.camera):
+        self.kin.position = [0.0, math.radians(50.0), math.radians(0), math.radians(4.0)]
+        self.interface.msg_kin_joints.set(self.kin,1)
+        rospy.sleep(0.6)
+        camera_images = self.camera.copy()
+        for index, img in enumerate(camera_images):
             classes = ["0","45","90","135","180","225","270","315"]
             image = img.copy()
             img_height, img_width = image.shape[:2]
@@ -488,15 +488,22 @@ class Helper():
             if conf > 0.5:
                 print("found miro")
                 self.timer3.shutdown()
+                self.final_map = self.prob_map<150
                 self.timer4 = rospy.Timer(rospy.Duration(0.5), self.pose_detection)
                 self.timer5 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
                 self.timer5 = rospy.Timer(rospy.Duration(0.5), self.move_miro)
+                self.timer6 = rospy.Timer(rospy.Duration(1), self.Astar)
                 self.send_audio("found")
                 break
+            if index == 0:
+                self.camera_display1.set_data(image)#
+            else:
+                self.camera_display2.set_data(image)#
         else:
             self.miro_found = False
             self.kin.position = [0.0, math.radians(30.0), 0.0, math.radians(-10.0)]
             self.move_head = True
+
 
     
     def pose_detection(self, *args):
@@ -604,22 +611,43 @@ class Helper():
                 pred_dist = self.pred_dist[1]
             
             if len(self.angle_queue) > 0 and pred_dist is not None:
+                # calculate other miro's position if looking at it
                 self.pred_angle = np.median(self.angle_queue)
-                self.pred_pos = self.pos+pred_dist*np.array([np.cos(self.orientation+ self.sens_kin.position[2]),
+                displacement = pred_dist*np.array([np.cos(self.orientation+self.sens_kin.position[2]),
                                                             np.sin(self.orientation+self.sens_kin.position[2])])
-                print("pos", self.pred_pos.round(2))
+                self.pred_pos = self.pos+displacement
+
+                self.pred_map_pos = self.pos2map(self.pred_pos[0],self.pred_pos[1])
+
+                maxarg = np.argmax(abs(displacement))
+                scan_range = np.arange(0.0,abs(displacement[maxarg])+1/MAP_SCALE,1/MAP_SCALE)
+                # for every cell between the miro and the object, set as empty
+                for i in scan_range:
+                    cur_coord = i*displacement/abs(displacement[maxarg])
+                    cur_map = self.pos2map(*(cur_coord+self.pos)).astype(int)
+                    coords = [max(cur_map[0]-BODY_SIZE,0),
+                            min(cur_map[0]+BODY_SIZE+1,self.final_map.shape[0]),
+                            max(cur_map[1]-BODY_SIZE,0),
+                            min(cur_map[1]+BODY_SIZE+1,self.final_map.shape[1])]
+                    self.final_map[coords[0]:coords[1],coords[2]:coords[3]] = False
+
+                new_map = cv2.cvtColor((1-self.final_map.astype(np.uint8))*255,cv2.COLOR_GRAY2RGB)
+                new_map[self.map_pos[0],self.map_pos[1]] = np.array([255,0,0])
+                new_map[self.pred_map_pos[0],self.pred_map_pos[1]] = np.array([0,0,255])
+                self.display.set_data(new_map)
+                # print("pos", self.pred_pos.round(2))
                 # print("real pos", np.round([self.pos.x,self.pos.y],2))
         elif self.sens_kin.position[2] < math.radians(25) and cdist > 0:
             self.kin.position[2] = self.sens_kin.position[2]+math.radians(15)
-            print("turning left",self.sens_kin.position[2])
+            # print("turning left",self.sens_kin.position[2])
         elif self.sens_kin.position[2] > -math.radians(25) and cdist < 0:
             # print(cdist,self.sens_kin.position[2])
             self.kin.position[2] = self.sens_kin.position[2]+math.radians(15)*np.sign(cdist)
-            print("turning right", self.kin.position[2], self.sens_kin.position[2])
+            # print("turning right", self.kin.position[2], self.sens_kin.position[2])
             # self.velocity.twist.angular.z = 0.6
         else:
             self.velocity.twist.angular.z = 1.0*np.sign(cdist)
-            print("moving body")
+            # print("moving body")
             self.kin.position[2] = 0.0#self.sens_kin.position[2]-math.radians(1)*np.sign(cdist)
 
 
@@ -629,14 +657,14 @@ class Helper():
         #     self.velocity.twist.angular.z = 0.0
         #     pred_dist = None
         
-        print("pred dist: ", pred_dist)
+        # print("pred dist: ", pred_dist)
         if pred_dist is None:
             self.velocity.twist.linear.x = 0.0
         elif pred_dist > 0.9:
-            print("moving forwards")
+            # print("moving forwards")
             self.velocity.twist.linear.x = 0.1
         elif pred_dist < 0.7:
-            print("moving backwards")
+            # print("moving backwards")
             self.velocity.twist.linear.x = -0.1
         
         else: 
@@ -647,32 +675,124 @@ class Helper():
         if abs(cdisty) < 20:
             pass
         elif cdisty < 0:
-            print("looking down", self.sens_kin.position[3], math.radians(2))
-            if self.sens_kin.position[3] < math.radians(2):
-                self.kin.position[3] = np.clip(self.sens_kin.position[3]+math.radians(5), math.radians(-5), math.radians(5))
+            # print("looking down", self.sens_kin.position[3], math.radians(4))
+            if self.sens_kin.position[3] < math.radians(5):
+                self.kin.position[3] = np.clip(self.sens_kin.position[3]+math.radians(5), math.radians(-8), math.radians(5))
             else:
-                self.kin.position[1] = np.clip(self.sens_kin.position[1]+math.radians(10), math.radians(45), math.radians(60))
+                self.kin.position[1] = np.clip(self.sens_kin.position[1]+math.radians(10), math.radians(45), math.radians(55))
         else:
-            print("looking up")
-            if self.sens_kin.position[3] > -math.radians(10):
-                self.kin.position[3] = np.clip(self.sens_kin.position[3]-math.radians(5), math.radians(-5), math.radians(5))
+            # print("looking up")
+            if self.sens_kin.position[3] > -math.radians(5):
+                self.kin.position[3] = np.clip(self.sens_kin.position[3]-math.radians(5), math.radians(-8), math.radians(5))
             else:
-                self.kin.position[1] = np.clip(self.sens_kin.position[1]-math.radians(10), math.radians(45), math.radians(60))
+                self.kin.position[1] = np.clip(self.sens_kin.position[1]-math.radians(10), math.radians(45), math.radians(55))
         # self.kin.position[3] = np.clip(self.kin.position[3],math.radians(-15),math.radians(15))                   
         self.interface.msg_kin_joints.set(self.kin,0.1)
         # self.pub_cmd_vel2.publish(self.velocity2)
 
+    def heuristic(self,pos1,pos2):
+        return np.max(abs(pos1-pos2))
 
     def Astar(self, *args):
         """Uses A* to determine the miro's next path
         Inputs: Map
         Outputs: Path
         """
+        if self.pred_map_pos is None:
+            return
+
+        start = self.pred_map_pos
+        goal = self.map_start
+        width, height = self.final_map.shape
+        grid = self.final_map
+
+        # if not self.isValid(start[0],start[1],width,height) or not self.isValid(goal[0],goal[1],width,height):
+        #     return "Source or destinaton is invalid"
+        
+        # checks if the miro is near it's destination
+        if (start-goal<2).all():
+            return "Already at destination"
+        
+        # closedList = [[False for _ in range(height)] for _ in range(width)]
+        closeList = set()
+        # cellDetails = [[Cell() for _ in range(height)] for _ in range(width)]
+        cellDetails = np.zeros((self.final_map.shape[0],self.final_map.shape[1],5), dtype=int)-1
+
+        f,g,h,parentx,parenty = range(5)
+        # initilises the starting node
+        x = start[0]
+        y = start[1]
+        cellDetails[x,y,g] = 0
+        cellDetails[x,y,h] = self.heuristic(start,goal)
+        cellDetails[x,y,f] = cellDetails[x,y,h]+cellDetails[x,y,g]
+        cellDetails[x,y,parentx] = x
+        cellDetails[x,y,parenty] = y
+
+        openList = []
+        heapq.heappush(openList,(0.0,x,y))
+        foundGoal = False
+
+        while len(openList) > 0 and not foundGoal:
+            p = heapq.heappop(openList)
+
+            x = p[1]
+            y = p[2]
+            closeList.update((x,y))
+
+            directions = [(0,1),(1,0),(0,-1),(-1,0),(1,1),(1,-1),(-1,1),(-1,-1)]
+            for dir in directions:
+                xNew = x + dir[0]
+                yNew = y + dir[1]
+                if xNew < 0 or yNew < 0: continue
+                if xNew >= width or yNew >= height: continue
+                    
+                if (xNew,yNew) in closeList:
+                    continue
+
+                if not grid[xNew,yNew]:
+                    # checks if it is the goal cell
+                    if (np.array([xNew,yNew])==goal).all():
+                        cellDetails[xNew,yNew,parentx] = x
+                        cellDetails[xNew,yNew,parenty] = y
+                        print("Destination Found")
+                        foundGoal = True
+                        break
+                        #return self.tracePath(cellDetails, goal)
+                    # adds cell to the list
+                    else:
+                        gNew = cellDetails[x,y,g] +1
+                        hNew = self.heuristic(np.array([xNew,yNew]),goal)
+                        fNew = gNew + hNew
+
+                        if cellDetails[xNew,yNew,f] == -1 or cellDetails[xNew,yNew,f] > fNew:
+                            heapq.heappush(openList,(fNew,xNew,yNew))
+                            cellDetails[xNew,yNew,f] = fNew   
+                            cellDetails[xNew,yNew,g] = gNew   
+                            cellDetails[xNew,yNew,h] = hNew   
+                            cellDetails[xNew,yNew,parentx] = x
+                            cellDetails[xNew,yNew,parenty] = y
+            
+        if not foundGoal:       
+            print("Failed to find destination")
+            return []
+        else:
+            print(cellDetails[goal[0],goal[1],parentx:parenty+1])
+            path = [cellDetails[goal[0],goal[1],parentx:parenty+1].reshape(2)]
+            while cellDetails[path[-1][0],path[-1][1],g] > 0:
+                print(path,np.array([cellDetails[path[-1][0],path[-1][1],parentx:parenty+1]]))
+                path.append(cellDetails[path[-1][0],path[-1][1],parentx:parenty+1])
+        
+        display_map = cv2.cvtColor((1-self.final_map.astype(np.uint8))*255, cv2.COLOR_GRAY2RGB)
+        for i in path:
+            display_map[i[0],i[1]] = np.array([255,0,0])
+        self.display4.set_data(display_map)
+        plt.draw()
+
         
     def move_miro(self, *args):
         """Determines what signals to give the miro
         """
-        if self.pred_pos is None or len(self.other_path)==0:
+        if self.pred_pos is None: #or len(self.other_path)==0:
             # self.velocity2.twist.linear.x = 0.0
             # self.velocity2.twist.angular.z = 0.0
             # self.pub_cmd_vel2.publish(self.velocity2)
@@ -689,7 +809,7 @@ class Helper():
         if np.linalg.norm(target_pos-self.pred_pos) < 0.3:
             # self.velocity2.twist.linear.x = 0.0
             # self.velocity2.twist.angular.z = 0.0
-            self.other_path = self.other_path[1:]
+            # self.other_path = self.other_path[1:]
             self.send_audio("stop")
         
         # checks if the robot is looking in the right direction
@@ -714,19 +834,28 @@ class Helper():
         Inputs: Command
         Outputs: Audio
         """
-        msg = UInt16MultiArray
+        return
+        msg = UInt16MultiArray()
         if command == "found":
-            msg.data = [800, 128, 1000]
+            # msg.data = [1200, 128, 1000]
+            self.interface.post_tone(1200, 25, 10)
         elif command == "forwards":
-            msg.data = [1200, 128, 1000]
+            # msg.data = [1600, 128, 1000]
+            self.interface.post_tone(1600, 25, 10)
         elif command == "stop":
-            msg.data = [1600, 128, 1000]
+            # msg.data = [2000, 128, 1000]
+            self.interface.post_tone(2000, 25, 10)
         elif command == "turn left":
-            msg.data = [2000, 128, 1000]
+            # msg.data = [2400, 128, 1000]
+            self.interface.post_tone(2400, 25, 10)
         elif command == "turn right":
-            msg.data = [2400, 128, 1000]
-        self.pub_tone.publish(msg)
-    
+            # msg.data = [2800, 128, 1000]
+            self.interface.post_tone(2800, 25, 10)
+        # self.interface.post_tone(2800, 128, 1000)
+        print(command)
+        # self.pub_tone.publish(msg)
+
+
 if __name__ == '__main__':
     main = Helper()
     if(rospy.get_node_uri()):

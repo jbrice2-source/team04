@@ -78,84 +78,51 @@ class lostMiro:
         audio = self.audio_data
         # if 3000hz - 3400hz:
 
-        channels = np.array([
-                self.bandpass(audio, [700, 900], 20000.0),
-                self.bandpass(audio, [1100, 1300], 20000.0),
-                self.bandpass(audio, [1500, 1700], 20000.0),
-                self.bandpass(audio, [1900, 2100], 20000.0),
-                self.bandpass(audio, [2300, 2500], 20000.0),
-                # self.bandpass(audio, [2700, 2900], 20000.0),
-                # self.bandpass(audio, [3100, 3300], 20000.0),
-                # self.bandpass(audio, [3500, 3700], 20000.0),
-                # self.bandpass(audio, [3900, 4100], 20000.0)
-        ])
-
-        # if np.mean(abs(channels[-1])) > threshhold:
-        #     rospy.loginfo("3900-4100 Hz frequency detected in audio input.")
-        #     rospy.loginfo("stop")     
-        #     self.currentDirection = ((0,0),radians(0)) # stop?
-        #     rospy.sleep(1)
-        #     self.listening = True
-        #     return
+        ranges = [[1100,1300],
+                  [1500,1700],
+                  [1900,2100],
+                  [2300,2500],
+                  [2700,2900],
+                  ]
+        commands = [self.turn_left,
+                    self.turn_right,
+                    self.forward,
+                    self.stop,
+                    self.found]
+        channels = np.zeros((len(ranges),audio.shape[0]))
+        for i,n in enumerate(ranges):
+            channels[i] = self.bandpass(audio, n, 20000.0)
 
         if not self.listening:
             return
+        amplitude = np.max(np.mean(abs(channels),axis=1))
+        channel = np.argmax(np.mean(abs(channels),axis=1))
+        rospy.loginfo(f"{amplitude} {channel}")
 
-        # found signal
-        if np.mean(abs(channels[0])) > threshhold:
-            rospy.loginfo("700 - 900 Hz frequency detected in audio input.")
-            rospy.loginfo("Found")
-            self.velocity.linear.x = 0.0
-            # self.currentDirection = ((0.5,0),radians(180))
-            # self.plot_band(fft(abs(channels[0])), [0, 1600], "700-900 Hz")
-            print(self.listening)       
-        # if 1000 - 1200hz: move forwards
-        elif np.mean(abs(channels[1])) > threshhold:
-            rospy.loginfo("1100-1300 Hz frequency detected in audio input.")
-            rospy.loginfo("Move forwards")
-            self.velocity.linear.x = 0.1
-            # self.currentDirection = ((0,0.5),radians(90))
-            print(self.listening)       
-        # if 2000 - 2400hz: stop
-        elif np.mean(abs(channels[2])) > threshhold:
-            rospy.loginfo("1500 - 1700 Hz frequency detected in audio input.")
-            rospy.loginfo("Stop")
-            self.velocity.linear.x = 0.0
-            self.velocity.angular.z = 0.0
 
-            # self.currentDirection = ((-0.5,0),radians(360))          
-        # if 2500 - 2900hz: 
-        elif np.mean(abs(channels[3])) > threshhold:
-            rospy.loginfo("1900-2100 Hz frequency detected in audio input.")
-            rospy.loginfo("Turn left")
-            self.velocity.angular.z = -0.8
-            # self.currentDirection = ((0,-0.5),radians(270)) 
-        # if 3000hz - 3400hz:
-        elif np.mean(abs(channels[4])) > threshhold:
-            rospy.loginfo("2300-2500 Hz frequency detected in audio input.")
-            rospy.loginfo("Turn right")
-            self.velocity.angular.z = 0.8
-            # self.currentDirection = ((-0.5,-0.5),radians(45)) 
-        # if 2000 - 2400hz:
-        # elif np.mean(abs(channels[5])) > threshhold:
-        #     rospy.loginfo("2700-2900 Hz frequency detected in audio input.")
-        #     rospy.loginfo("placeholder")
-        #     # self.currentDirection = ((-0.5,-0.5),radians(315)) 
-        # # if 2500 - 2900hz:     
-        # elif np.mean(abs(channels[6])) > threshhold:
-        #     rospy.loginfo("3100-3300 Hz frequency detected in audio input.")
-        #     rospy.loginfo("placeholder")
-        #     # self.currentDirection = ((0.5,0.5),radians(135)) 
-        # # if 3000hz - 3400hz:
-        # elif np.mean(abs(channels[7])) > threshhold:
-        #     rospy.loginfo("3500-3700 Hz frequency detected in audio input.")
-        #     rospy.loginfo("placeholder")
-            # self.currentDirection = (((0.5,-0.5),radians(225)))
- 
-        else: return
-        self.interface.msg_cmd_vel.publish(self.velocity,0.1)
-        self.listening = False
+        if amplitude > threshhold:
+            rospy.loginfo(f"{ranges[channel][0]} - {ranges[channel][1]} Hz frequency detected in audio input.")
+            rospy.loginfo(commands[channel].__name__)
+            commands[channel]()
+        self.interface.msg_cmd_vel.set(self.velocity,0.1)
+        # self.listening = False
         # self.execute_movement()
+
+    def turn_left(self): 
+        self.velocity.twist.linear.x = 0.0
+        self.velocity.twist.angular.z = -1.8    
+    def turn_right(self):
+        self.velocity.twist.linear.x = 0.0
+        self.velocity.twist.angular.z = 1.8
+    def forward(self):
+        self.velocity.twist.linear.x = 0.25
+        self.velocity.twist.angular.z = 0.0
+
+    def stop(self):
+        self.velocity.twist.linear.x = 0.0
+        self.velocity.twist.angular.z = 0.0
+    def found(self):
+        pass
 
     def callback_odom(self, odometry):
         if odometry != None:
@@ -208,8 +175,11 @@ class lostMiro:
 
 
 if __name__ == "__main__":
-    rospy.init_node("lost_nav")
     robot = lostMiro()
+    if(rospy.get_node_uri()):
+        pass
+    else:
+        rospy.init_node("lost_nav")
     # mic = rospy.Subscriber("miro01/sensors/mics", Int16MultiArray, audio_callback, queue_size=1)
     try:
         # while robot.goalReached == False:
