@@ -52,14 +52,14 @@ class Explore:
         self.kin = JointState()
         # defines the joint positions
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.kin.position = [0.0, math.radians(40.0), 0.0, math.radians(-10.0)]
+        self.kin.position = [0.0, math.radians(35.0), 0.0, math.radians(-10.0)]
         self.input_package = None
         self.map = np.zeros((MAP_SIZE,MAP_SIZE,3),np.uint8)+127
         self.display = None
         self.map_start = np.array([MAP_SIZE//2,MAP_SIZE//2])
         self.map_pos = np.copy(self.map_start)
         self.other_map_pos = None
-        self.head_direction = 40
+        self.head_direction = 20
         self.path = []
         self.starting_scan = True
         self.miro_found = False
@@ -135,7 +135,7 @@ class Explore:
             return
         if dist == float('inf'): # filtering out infinity
             dist = 1.0
-        dist += 0.05 # adds distance to account for head offset, probably useless
+        dist -= 0.05 # adds distance to account for head offset, probably useless
         
         # makes the robot reverse and recalculate it's path if it's in front of an obstacle 
 
@@ -163,10 +163,10 @@ class Explore:
                           min(cur_map[1]+OBSTACLE_SIZE+1,self.map.shape[1])]
                 self.map[coords[0]:coords[1],coords[2]:coords[3]] = Explore.increase_prob(self.map[coords[0]:coords[1],coords[2]:coords[3]],False,dist)
         if dist < 0.6: 
-            selected_map = self.map[max(map_coords[0]-OBSTACLE_SIZE,0):min(map_coords[0]+OBSTACLE_SIZE+1,self.map.shape[0]),
-                                    max(map_coords[1]-OBSTACLE_SIZE,0):min(map_coords[1]+OBSTACLE_SIZE+1,self.map.shape[1])]
-            self.map[max(map_coords[0]-OBSTACLE_SIZE,0):min(map_coords[0]+OBSTACLE_SIZE+1,self.map.shape[0]),
-                     max(map_coords[1]-OBSTACLE_SIZE,0):min(map_coords[1]+OBSTACLE_SIZE+1,self.map.shape[1])] = Explore.increase_prob(selected_map,True,0)
+            selected_map = self.map[max(map_coords[0]-OBSTACLE_SIZE-1,0):min(map_coords[0]+OBSTACLE_SIZE+2,self.map.shape[0]),
+                                    max(map_coords[1]-OBSTACLE_SIZE-1,0):min(map_coords[1]+OBSTACLE_SIZE+2,self.map.shape[1])]
+            self.map[max(map_coords[0]-OBSTACLE_SIZE-1,0):min(map_coords[0]+OBSTACLE_SIZE+2,self.map.shape[0]),
+                     max(map_coords[1]-OBSTACLE_SIZE-1,0):min(map_coords[1]+OBSTACLE_SIZE+2,self.map.shape[1])] = Explore.increase_prob(selected_map,True,0)
             
         # draws in the graph
         if self.display is not None:
@@ -247,7 +247,7 @@ class Explore:
     def head_move(self, *args):
         if self.move_head:
             self.kin.position[2] = self.input_package.kinematic_joints.position[2]+np.radians(self.head_direction)
-        if abs(self.kin.position[2]) > np.radians(45):
+        if abs(self.kin.position[2]) > np.radians(30):
             self.head_direction *= -1 # reverses the direction after hitting a limit
         # self.pub_kin.publish(self.kin)     
         self.interface.msg_kin_joints.set(self.kin,0.1)
@@ -346,8 +346,8 @@ class Explore:
         try:
             if len(self.path) == 0:
                 self.velocity.twist.linear.x = 0.05
-                self.velocity.twist.angular.z = 1.8
-                self.interface.msg_cmd_vel.set(self.velocity, 0.2)
+                self.velocity.twist.angular.z = 1.0
+                self.interface.msg_cmd_vel.set(self.velocity, 0.3)
                 # rospy.sleep(6)
                 print("path finished")
                 return
