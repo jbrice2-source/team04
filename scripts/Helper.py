@@ -52,6 +52,8 @@ class Helper():
         self.prob_map = np.zeros((MAP_SIZE,MAP_SIZE),dtype=np.uint8)+127
         self.final_map = np.zeros_like(self.prob_map.shape, dtype=bool)
         self.path = []
+        self.helper_path = []
+        self.helper_moving = False
         self.prob_map_pos = None
         self.interface = miro.lib.RobotInterface()
         self.image_converter = CvBridge()
@@ -493,6 +495,8 @@ class Helper():
                 self.timer5 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
                 self.timer5 = rospy.Timer(rospy.Duration(0.5), self.move_miro)
                 self.timer6 = rospy.Timer(rospy.Duration(1), self.Astar)
+                self.timer7 = rospy.Timer(rospy.Duration(0.5), self.lead_miro)
+                self.timer8 = rospy.Timer(rospy.Duration(1), self.helperAstar)
                 self.send_audio("found")
                 break
             if index == 0:
@@ -781,12 +785,121 @@ class Helper():
             while cellDetails[path[-1][0],path[-1][1],g] > 0:
                 print(path,np.array([cellDetails[path[-1][0],path[-1][1],parentx:parenty+1]]))
                 path.append(cellDetails[path[-1][0],path[-1][1],parentx:parenty+1])
-        
+        self.path = path
         display_map = cv2.cvtColor((1-self.final_map.astype(np.uint8))*255, cv2.COLOR_GRAY2RGB)
         for i in path:
             display_map[i[0],i[1]] = np.array([255,0,0])
         self.display4.set_data(display_map)
         plt.draw()
+    
+    def helperAstar(self, *args):
+        if self.pred_map_pos is None:
+            return
+
+        start = self.path[10]
+        goal = self.path[-1]
+        width, height = self.final_map.shape
+        grid = self.final_map
+
+        # if not self.isValid(start[0],start[1],width,height) or not self.isValid(goal[0],goal[1],width,height):
+        #     return "Source or destinaton is invalid"
+        
+        # checks if the miro is near it's destination
+        if (start-goal<2).all():
+            return "Already at destination"
+        
+        # closedList = [[False for _ in range(height)] for _ in range(width)]
+        closeList = set()
+        # cellDetails = [[Cell() for _ in range(height)] for _ in range(width)]
+        cellDetails = np.zeros((self.final_map.shape[0],self.final_map.shape[1],5), dtype=int)-1
+
+        f,g,h,parentx,parenty = range(5)
+        # initilises the starting node
+        x = start[0]
+        y = start[1]
+        cellDetails[x,y,g] = 0
+        cellDetails[x,y,h] = self.heuristic(start,goal)
+        cellDetails[x,y,f] = cellDetails[x,y,h]+cellDetails[x,y,g]
+        cellDetails[x,y,parentx] = x
+        cellDetails[x,y,parenty] = y
+
+        openList = []
+        heapq.heappush(openList,(0.0,x,y))
+        foundGoal = False
+
+        while len(openList) > 0 and not foundGoal:
+            p = heapq.heappop(openList)
+
+            x = p[1]
+            y = p[2]
+            closeList.update((x,y))
+
+            directions = [(0,1),(1,0),(0,-1),(-1,0)]
+            for dir in directions:
+                xNew = x + dir[0]
+                yNew = y + dir[1]
+                if xNew < 0 or yNew < 0: continue
+                if xNew >= width or yNew >= height: continue
+                    
+                if (xNew,yNew) in closeList:
+                    continue
+
+                if not grid[xNew,yNew]:
+                    # checks if it is the goal cell
+                    if (np.array([xNew,yNew])==goal).all():
+                        cellDetails[xNew,yNew,parentx] = x
+                        cellDetails[xNew,yNew,parenty] = y
+                        print("Destination Found")
+                        foundGoal = True
+                        break
+                        #return self.tracePath(cellDetails, goal)
+                    # adds cell to the list
+                    else:
+                        gNew = cellDetails[x,y,g] +1
+                        hNew = self.heuristic(np.array([xNew,yNew]),goal)
+                        fNew = gNew + hNew
+
+                        if cellDetails[xNew,yNew,f] == -1 or cellDetails[xNew,yNew,f] > fNew:
+                            heapq.heappush(openList,(fNew,xNew,yNew))
+                            cellDetails[xNew,yNew,f] = fNew   
+                            cellDetails[xNew,yNew,g] = gNew   
+                            cellDetails[xNew,yNew,h] = hNew   
+                            cellDetails[xNew,yNew,parentx] = x
+                            cellDetails[xNew,yNew,parenty] = y
+            
+        if not foundGoal:       
+            print("Failed to find destination")
+            return []
+        else:
+            print(cellDetails[goal[0],goal[1],parentx:parenty+1])
+            path = [cellDetails[goal[0],goal[1],parentx:parenty+1].reshape(2)]
+            while cellDetails[path[-1][0],path[-1][1],g] > 0:
+                print(path,np.array([cellDetails[path[-1][0],path[-1][1],parentx:parenty+1]]))
+                path.append(cellDetails[path[-1][0],path[-1][1],parentx:parenty+1])
+        self.helper_path = path        
+        display_map = cv2.cvtColor((1-self.final_map.astype(np.uint8))*255, cv2.COLOR_GRAY2RGB)
+        for i in path:
+            display_map[i[0],i[1]] = np.array([255,0,0])
+        self.display4.set_data(display_map)
+        plt.draw()
+
+
+    def lead_miro(self, *args):
+        """Moves ahead of the lost miro and follows the path generates one step ahead
+        """
+        next_position = self.helper_path.reverse[-1]
+        angle_difference = np.arctan2(next_position[1]-self.pred_map_pos[1],next_position[0]-self.pred_map_pos[0])
+        if angle_difference - self.pred_angle > 3:
+            self.velocity2.twist.angular.z = 0.5
+            return
+        self.velocity2.twist.angular.z = 0.0
+        euclidean_difference = np.linalg.norm(next_position - self.pred_map_pos)
+        if euclidean_difference > 0.1:
+            self.velocity2.twist.linear.x = 0.15
+            return
+        self.velocity2.twist.linear.x = 0.0
+        self.helper_moving = False
+
 
         
     def move_miro(self, *args):
