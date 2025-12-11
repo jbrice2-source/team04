@@ -415,9 +415,7 @@ class Explore:
             self.velocity.twist.linear.x = -0.1
         else:
             self.velocity.twist.linear.x = 0.0
-
             # self.velocity.twist.angular.z = 0.0
-        
         # checks if the robot is looking in the right direction
         if min(dists) < 0.1:
             self.velocity.twist.angular.z = 0.0
@@ -467,9 +465,13 @@ class Explore:
 
         return msg
     
+<<<<<<< HEAD
     def make_sound(self):
         FREQUENCY_PATH = "/root/mdk/catkin_ws/src/team04/sound_files/"
         
+=======
+    def make_sound(self,*args):
+>>>>>>> 18fbeffc72c355d2ee9a4c5d4e719214044aed20
         action = self.astar_path.pop
         #North
         if(action[1] == radians(360)):
@@ -505,7 +507,7 @@ class Explore:
         
         ######## need stop command????
             
-    #Displays the path to take
+    #Creates path
     def tracePath(self, cellDetails,goal):
         print("The path is ")
         path = []

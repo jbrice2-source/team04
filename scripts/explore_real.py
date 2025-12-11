@@ -5,6 +5,8 @@ import rospy
 from std_msgs.msg import Float32MultiArray, UInt32MultiArray, UInt16MultiArray, UInt8MultiArray, UInt16, Int16MultiArray, String
 from geometry_msgs.msg import TwistStamped, Pose2D
 from sensor_msgs.msg import JointState, CompressedImage
+from nav_msgs.msg import Odometry
+
 
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
@@ -24,17 +26,17 @@ import uuid
 
 droop, wag, left_eye, right_eye, left_ear, right_ear = range(6)
 
-MAP_SCALE = 10
-MAP_SIZE = 80
+MAP_SCALE = 15
+MAP_SIZE = 100
 OBSTACLE_SIZE=1
-BODY_SIZE=2
+BODY_SIZE=1
 
 
 class Explore:
     
     def __init__(self):
-        base1 = "/miro01"
-        base2 = "/miro02"
+        base1 = "/miro"
+        # base2 = "/miro02"
         self.interface = miro.lib.RobotInterface()
 
         self.velocity = TwistStamped()
@@ -50,28 +52,29 @@ class Explore:
         self.kin = JointState()
         # defines the joint positions
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.kin.position = [0.0, math.radians(10.0), 0.0, math.radians(-10.0)]
+        self.kin.position = [0.0, math.radians(35.0), 0.0, math.radians(-10.0)]
         self.input_package = None
         self.map = np.zeros((MAP_SIZE,MAP_SIZE,3),np.uint8)+127
         self.display = None
         self.map_start = np.array([MAP_SIZE//2,MAP_SIZE//2])
         self.map_pos = np.copy(self.map_start)
         self.other_map_pos = None
-        self.head_direction = 5
+        self.head_direction = 20
         self.path = []
         self.starting_scan = True
         self.miro_found = False
+        self.move_head = True
 
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=10)
-        self.pub_kin = rospy.Publisher(base1 + "/control/kinematic_joints", JointState, queue_size=10)
+        # self.pub_kin = rospy.Publisher(base1 + "/control/kinematic_joints", JointState, queue_size=10)
 
         # subscribers
         self.sub_package = rospy.Subscriber(base1 + "/sensors/package",
                     miro.msg.sensors_package, self.callback_package, queue_size=1, tcp_nodelay=True)
-        self.pose = rospy.Subscriber(base1 + "/sensors/body_pose",
-            Pose2D, self.callback_pose, queue_size=1, tcp_nodelay=True)
-        self.pose2 = rospy.Subscriber(base2 + "/sensors/body_pose",
-            Pose2D, self.other_pose, queue_size=1, tcp_nodelay=True)
+        self.pose = rospy.Subscriber(base1 + "/sensors/odom",
+            Odometry, self.callback_pose, queue_size=1, tcp_nodelay=True)
+        # self.pose2 = rospy.Subscriber(base2 + "/sensors/body_pose",
+        #     Pose2D, self.other_pose, queue_size=1, tcp_nodelay=True)
         
 
 
@@ -80,15 +83,16 @@ class Explore:
         # while time.time_ns()-scan_timer < 5e9:
         #     self.pub_kin.publish(self.kin)
         #     self.velocity.twist.angular.z = 1.2
-        #     self.pub_cmd_vel.publish(self.velocity)
+        #     self.interface.msg_cmd_vel.set(self.velocity, 0.2))
         self.starting_scan = False
 
 
         # timers to call the various functions
-        self.timer = rospy.Timer(rospy.Duration(0.1), self.move_to_point)
+        self.timer = rospy.Timer(rospy.Duration(0.3), self.move_to_point)
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
         self.timer3 = rospy.Timer(rospy.Duration(1.0), self.search_map)
-        self.timer4 = rospy.Timer(rospy.Duration(0.1), self.follow_miro)
+        self.timer4 = rospy.Timer(rospy.Duration(0.1), self.draw_map)
+        # self.timer4 = rospy.Timer(rospy.Duration(0.1), self.follow_miro)
 
 
         # creating plots for visualisation
@@ -110,9 +114,9 @@ class Explore:
                 new_cells[i] = cell
                 continue
             elif is_full:
-                new_cell = cell/255*0.75 # due to risk aversion full cells are made more likely to register than empty ones
+                new_cell = cell/255*0.7 # due to risk aversion full cells are made more likely to register than empty ones
             else:
-                new_cell = 1-((1-cell/255)*0.9)
+                new_cell = 1-((1-cell/255)*0.95)
             new_cells[i] = new_cell*255
             if (new_cells[i] == 127).all(): # 127 indicates an unexplored cell, if evaluated cannot ever be unexplored again
                 new_cells[i] += 1
@@ -124,22 +128,22 @@ class Explore:
         if self.miro_found:
             return
         self.input_package = msg
+
+    def draw_map(self, *args):
         dist = self.input_package.sonar.range
         if self.start_pos is None or self.pos is None:
             return
         if dist == float('inf'): # filtering out infinity
             dist = 1.0
-        dist += 0.01 # adds distance to account for head offset, probably useless
+        dist -= 0.05 # adds distance to account for head offset, probably useless
         
         # makes the robot reverse and recalculate it's path if it's in front of an obstacle 
-        if dist < 0.3 and abs(self.kin.position[2]) < 0.8:
-            self.path = []
-            self.velocity.twist.linear.x = -0.1
-            self.pub_cmd_vel.publish(self.velocity)
+
+            # rospy.sleep(1)
         
         # calculates the objects relative position
-        obj_vec = dist*np.array([np.cos(self.pos.theta+self.kin.position[2]),
-                                    np.sin(self.pos.theta+self.kin.position[2])])
+        obj_vec = dist*np.array([np.cos(self.pos.theta+self.input_package.kinematic_joints.position[2]),
+                                    np.sin(self.pos.theta+self.input_package.kinematic_joints.position[2])])
         # position vector for faster calculations
         pos_vec = np.array([self.pos.x,self.pos.y])
         
@@ -158,11 +162,11 @@ class Explore:
                           max(cur_map[1]-OBSTACLE_SIZE,0),
                           min(cur_map[1]+OBSTACLE_SIZE+1,self.map.shape[1])]
                 self.map[coords[0]:coords[1],coords[2]:coords[3]] = Explore.increase_prob(self.map[coords[0]:coords[1],coords[2]:coords[3]],False,dist)
-        if dist < 0.8: 
-            selected_map = self.map[max(map_coords[0]-OBSTACLE_SIZE,0):min(map_coords[0]+OBSTACLE_SIZE+1,self.map.shape[0]),
-                                    max(map_coords[1]-OBSTACLE_SIZE,0):min(map_coords[1]+OBSTACLE_SIZE+1,self.map.shape[1])]
-            self.map[max(map_coords[0]-OBSTACLE_SIZE,0):min(map_coords[0]+OBSTACLE_SIZE+1,self.map.shape[0]),
-                     max(map_coords[1]-OBSTACLE_SIZE,0):min(map_coords[1]+OBSTACLE_SIZE+1,self.map.shape[1])] = Explore.increase_prob(selected_map,True,0)
+        if dist < 0.6: 
+            selected_map = self.map[max(map_coords[0]-OBSTACLE_SIZE-1,0):min(map_coords[0]+OBSTACLE_SIZE+2,self.map.shape[0]),
+                                    max(map_coords[1]-OBSTACLE_SIZE-1,0):min(map_coords[1]+OBSTACLE_SIZE+2,self.map.shape[1])]
+            self.map[max(map_coords[0]-OBSTACLE_SIZE-1,0):min(map_coords[0]+OBSTACLE_SIZE+2,self.map.shape[0]),
+                     max(map_coords[1]-OBSTACLE_SIZE-1,0):min(map_coords[1]+OBSTACLE_SIZE+2,self.map.shape[1])] = Explore.increase_prob(selected_map,True,0)
             
         # draws in the graph
         if self.display is not None:
@@ -204,17 +208,27 @@ class Explore:
                 self.timer2.shutdown()
                 self.timer3.shutdown()
                 self.kin.position = [0.0,np.radians(40),0.0,np.radians(10)]
-                self.pub_kin.publish(self.kin)
-                self.interface.msg_kin_joints.set(self.kin,0.2)
+                # self.pub_kin.publish(self.kin)
+                # self.interface.msg_kin_joints.set(self.kin,0.2)
 
     # callback for the odometery
     def callback_pose(self, pose):
+
         if pose is not None:
+            self.pos.x = pose.pose.pose.position.x
+            self.pos.y = pose.pose.pose.position.y
+            qw = pose.pose.pose.orientation.w
+            qz = pose.pose.pose.orientation.z
+            self.pos.theta = np.arctan2(2*(qw*qz), 1-2*(qz**2))
             if self.start_pos is None:
-                self.start_pos = pose
-            self.pos.x = pose.x
-            self.pos.y = pose.y
-            self.pos.theta = pose.theta
+                self.start_pos = Pose2D()
+                self.start_pos.x = self.pos.x
+                self.start_pos.y = self.pos.y
+                # print("setting starting pos")
+            # print(self.pos.x,self.pos.y,self.pos.theta)
+            # print(self.start_pos.x,self.start_pos.y)
+            # print(self.pos2map(self.pos.x,self.pos.y))
+            # print("starting pos:", self.pos.x,self.pos.y)
             # sets positions of previous robot as empty 
             self.map[max(self.map_pos[0]-BODY_SIZE,0):min(self.map_pos[0]+BODY_SIZE+1,self.map.shape[0]-1),
                      max(self.map_pos[1]-BODY_SIZE,0):min(self.map_pos[1]+BODY_SIZE+1,self.map.shape[1]-1)] = 255
@@ -231,11 +245,12 @@ class Explore:
        
     # continuously moves the head around to better guage it's surroundings
     def head_move(self, *args):
-        self.kin.position[2] += np.radians(self.head_direction)
-        if abs(self.kin.position[2]) > np.radians(50):
+        if self.move_head:
+            self.kin.position[2] = self.input_package.kinematic_joints.position[2]+np.radians(self.head_direction)
+        if abs(self.kin.position[2]) > np.radians(30):
             self.head_direction *= -1 # reverses the direction after hitting a limit
-        self.pub_kin.publish(self.kin)     
-        self.interface.msg_kin_joints.set(self.kin,0.2)
+        # self.pub_kin.publish(self.kin)     
+        self.interface.msg_kin_joints.set(self.kin,0.1)
 
     # dijkstra's algorithm to search for unexplored space
     def search_map(self, *args):
@@ -315,7 +330,7 @@ class Explore:
                     next_val = (value, i)
             # appends the best value to the path
             path.append(next_val[1])
-        self.path = path
+        self.path = path[:-5]
         # displays the path
         path_map = np.zeros(dist_map.shape,dtype=int)
         for i in path:
@@ -330,41 +345,69 @@ class Explore:
             return
         try:
             if len(self.path) == 0:
-                self.velocity.twist.linear.x = 0.0
-                self.velocity.twist.angular.z = 0.6
-                self.pub_cmd_vel.publish(self.velocity)
+                self.velocity.twist.linear.x = 0.05
+                self.velocity.twist.angular.z = 1.0
+                self.interface.msg_cmd_vel.set(self.velocity, 0.3)
+                # rospy.sleep(6)
                 print("path finished")
                 return
             print(self.path[-1])
             # calculates the target angle for the position
             target_pos = self.map2pos(*self.path[-1])
-            self.velocity.twist.linear.x = 0.2
             target = np.arctan2(target_pos[1]-self.pos.y,target_pos[0]-self.pos.x)
-            
+            print(self.path[-1], target_pos)
+
             # calculates the differance in angle between current and target
             dists = [(self.pos.theta%(2*np.pi)-target%(2*np.pi))%(2*np.pi),(target%(2*np.pi)-self.pos.theta%(2*np.pi))%(2*np.pi)]
 
+            dist = self.input_package.sonar.range
+            if self.start_pos is None or self.pos is None:
+                return
+            if dist == float('inf'): # filtering out infinity
+                dist = 1.0
+            # dist += 0.01 # adds distance to account for head offset, probably useless
+
             # checks if the robot is close to the next node in the path 
+            # self.velocity.twist.linear.x = 0.00
+
             if np.linalg.norm(target_pos-np.array([self.pos.x,self.pos.y])) < 0.3:
-                self.velocity.twist.linear.x = 0.0
-                self.velocity.twist.angular.z = 0.0
+                # self.velocity.twist.linear.x = 0.20
+                # self.velocity.twist.angular.z = 0.0
                 self.path = self.path[:-1] # removes the last element from the path
-            
+                print("path explored")
+
             # checks if the robot is looking in the right direction
-            elif min(dists) < 0.1:
+            if min(dists) < 0.3:
+                # self.velocity.twist.angular.z = 0.0
+                if dist < 0.4 and abs(self.input_package.kinematic_joints.position[2]) < 0.6:
+                    self.path = []
+                    self.velocity.twist.linear.x = -0.2
+                    self.move_head = False
+                    # self.interface.msg_cmd_vel.set(self.velocity, 1)
+                    print("reversing")
+                else:
+                    self.velocity.twist.linear.x = 0.2*(1-min(dists)/np.pi)
+                    self.move_head = True
+                    print("moving forwards")
+
+
+                # self.interface.msg_cmd_vel.set(self.velocity, 0.5)
+            if min(dists) < 0.2:
                 self.velocity.twist.angular.z = 0.0
-                self.pub_cmd_vel.publish(self.velocity)
+                print("stop turning", min(dists))
             # moves clockwise if the right angle is lower
             elif dists[0] >= dists[1]:
-                self.velocity.twist.angular.z = 1.2
-                self.velocity.twist.linear.x = 0.01
+                self.velocity.twist.angular.z = 1.8
+                print("moving right", min(dists))
+                # self.velocity.twist.linear.x = 0.02
                 # print("turning left")
             # moves counter clockwise otherwise
             else:
-                self.velocity.twist.angular.z = -1.2
-                self.velocity.twist.linear.x = 0.01
+                self.velocity.twist.angular.z = -1.8
+                print("moving left", min(dists))
+                # self.velocity.twist.linear.x = 0.02
 
-            self.pub_cmd_vel.publish(self.velocity)
+            self.interface.msg_cmd_vel.set(self.velocity, 0.3)
         except Exception as e:
             print("exception",e)
             
@@ -397,7 +440,7 @@ class Explore:
         # checks if the robot is looking in the right direction
         if min(dists) < 0.1:
             self.velocity.twist.angular.z = 0.0
-            self.pub_cmd_vel.publish(self.velocity)
+            self.interface.msg_cmd_vel.set(self.velocity, 0.2)
         # moves clockwise if the right angle is lower
         elif dists[0] >= dists[1]:
             self.velocity.twist.angular.z = 1.2
@@ -406,7 +449,7 @@ class Explore:
         else:
             self.velocity.twist.angular.z = -1.2
             self.velocity.twist.linear.x = 0.01
-        self.pub_cmd_vel.publish(self.velocity)
+        self.interface.msg_cmd_vel.set(self.velocity, 0.2)
 
     def loop(self):
         pass
