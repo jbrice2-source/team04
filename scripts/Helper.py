@@ -739,7 +739,7 @@ class Helper():
             y = p[2]
             closeList.update((x,y))
 
-            directions = [(0,1),(1,0),(0,-1),(-1,0),(1,1),(1,-1),(-1,1),(-1,-1)]
+            directions = [(0,1),(1,0),(0,-1),(-1,0)]
             for dir in directions:
                 xNew = x + dir[0]
                 yNew = y + dir[1]
