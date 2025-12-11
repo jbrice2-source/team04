@@ -5,6 +5,7 @@ import rospy
 from std_msgs.msg import Float32MultiArray, UInt32MultiArray, UInt16MultiArray, UInt8MultiArray, UInt16, Int16MultiArray, String
 from geometry_msgs.msg import TwistStamped, Pose2D
 from sensor_msgs.msg import JointState, CompressedImage
+import wave
 
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
@@ -75,6 +76,7 @@ class Explore:
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=10)
         self.pub_kin = rospy.Publisher(base1 + "/control/kinematic_joints", JointState, queue_size=10)
         self.pub_tone = rospy.Publisher(base1 + "control/tone", UInt16MultiArray,queue_size=1)
+        self.pub_stream = rospy.Publisher(base1 + "/control/stream", Int16MultiArray, queue_size=0)
 
         # subscribers
         self.sub_package = rospy.Subscriber(base1 + "/sensors/package",
@@ -199,7 +201,8 @@ class Explore:
         if self.pos is not None and pose is not None:
             pos_vec = np.array([self.pos.x, self.pos.y])
             other_vec = np.array([pose.x,pose.y])
-            self.other_pos = pose
+            self.other_pos.x = pose.x
+            self.other_pos.y = pose.y
             distance = np.linalg.norm(pos_vec-other_vec)
             
             if self.other_map_pos is not None:        
@@ -427,8 +430,45 @@ class Explore:
             self.velocity.twist.angular.z = -1.2
             self.velocity.twist.linear.x = 0.01
         self.pub_cmd_vel.publish(self.velocity)
+        
+    def load_wav(path, speaker_sample_rate=8000):
+        try:
+            # open wav read only mode
+            file = wave.open(path, 'rb')
+        except wave.Error as e:
+            return rospy.logerr("Error loading WAV file '%s': %s", path, str(e))
+        
+        # get wav header information
+        nframes = file.getnframes()
+        sample_rate = file.getframerate()
+        sample_width = file.getsampwidth()
+        nchannels = file.getnchannels()
+
+        # get raw audio data
+        frames = file.readframes(nframes)
+        file.close()
+        
+        # convert bytes data to numpy array
+        audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+        
+        # downmix to mono (files are stereo)
+        audio = audio.reshape(-1, nchannels).mean(axis=1)
+
+        # resample
+        ratio = float(sample_rate) / float(speaker_sample_rate)
+        original_indices = np.arange(len(audio))
+        new_indices = np.arange(0, len(audio), ratio)
+        resampled_audio = np.interp(new_indices, original_indices, audio).astype(np.uint16)
+
+        # Convert to ros uint16multiarray
+        msg = UInt16MultiArray()
+        msg.data = resampled_audio.tolist()
+        
+        return msg
     
-    def make_sound(self,*args):
+    def make_sound(self):
+        FREQUENCY_PATH = "/root/mdk/catkin_ws/src/team04/sound_files/"
+        
         action = self.astar_path.pop
         #North
         if(action[1] == radians(360)):
@@ -436,27 +476,24 @@ class Explore:
             msg.data = [800, 128, 1000]
             self.pub_tone.publish(msg)
         elif(action[1] == radians(315)):
-            msg = UInt16MultiArray
-            msg.data = [2800, 128, 1000]
-            self.pub_tone.publish(msg)
-        #West
+            self.pub_stream.publish(load_wav(FREQUENCY_PATH + "2800_hz.wav"))
+            
+        # West
         elif(action[1] == radians(270)):
             msg = UInt16MultiArray
             msg.data = [2000, 128, 1000]
             self.pub_tone.publish(msg)
         elif(action[1] == radians(225)):
-            msg = UInt16MultiArray
-            msg.data = [3600, 128, 1000]
-            self.pub_tone.publish(msg)
+            self.pub_stream.publish(load_wav(FREQUENCY_PATH + "3600_hz.wav"))
+            
         #South
         elif(action[1] == radians(180)):
             msg = UInt16MultiArray
             msg.data = [1600, 128, 1000]
             self.pub_tone.publish(msg)
         elif(action[1] == radians(135)):
-            msg = UInt16MultiArray
-            msg.data = [3200, 128, 1000]
-            self.pub_tone.publish(msg)
+            self.pub_stream.publish(load_wav(FREQUENCY_PATH + "3200_hz.wav"))
+            
         #East
         elif(action[1] == radians(90)):
             msg = UInt16MultiArray
@@ -466,6 +503,8 @@ class Explore:
             msg = UInt16MultiArray
             msg.data = [2400, 128, 1000]
             self.pub_tone.publish(msg)
+        else:
+            return
             
     #Creates path
     def tracePath(self, cellDetails,goal):
@@ -493,13 +532,20 @@ class Explore:
             path.append(dir)
         self.astar_path = path
         return
+    
+    #Check if the move is possible
+    def isUnblocked(self,row,col,grid):
+        return not grid[row][col] < 150    
+
+    def isValid(self,row, col,width,height):
+        return (row >= 0) and (row < width) and (col >= 0) and (col < height)
 
     #A-Star search implementation
     def aStarSearch(self):
         start = self.pos.x,self.pos.y
         goal = self.other_pos.x,self.other_pos.y
-        width = 80
-        height = 80 
+        width = MAP_SIZE
+        height = MAP_SIZE
         grid = self.map
         if not self.isValid(start[0],start[1],width,height) or not self.isValid(goal[0],goal[1],width,height):
             return "Source or destinaton is invalid"
