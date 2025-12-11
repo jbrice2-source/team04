@@ -38,6 +38,9 @@ class lostMiro:
         self.currentInstruction = ""
         self.posx = 1
         self.posy = 2
+        self.target_angle = 0
+        self.init_pos = np.array([])
+        self.target_disp = 0
         self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
         self.odeometerySub = rospy.Subscriber(base1 + "/sensors/odom",
             Odometry, self.callback_odom, queue_size=1, tcp_nodelay=True)
@@ -75,7 +78,7 @@ class lostMiro:
         if self.audio_data is None:
             return
         threshhold = 500
-        audio = self.audio_data
+        audio = self.audio_data[:500]
         # if 3000hz - 3400hz:
 
         ranges = [[1100,1300],
@@ -103,24 +106,37 @@ class lostMiro:
         if amplitude > threshhold:
             rospy.loginfo(f"{ranges[channel][0]} - {ranges[channel][1]} Hz frequency detected in audio input.")
             rospy.loginfo(commands[channel].__name__)
+            self.listening = False
             commands[channel]()
-        self.interface.msg_cmd_vel.set(self.velocity,0.1)
+        # self.interface.msg_cmd_vel.set(self.velocity,0.1)
         # self.listening = False
         # self.execute_movement()
 
     def turn_left(self): 
         self.velocity.twist.linear.x = 0.0
-        self.velocity.twist.angular.z = -1.8    
+        self.velocity.twist.angular.z = -1.2
+        self.interface.msg_cmd_vel.set(self.velocity,1)
+        rospy.sleep(0.2)
+        self.listening = True  
     def turn_right(self):
         self.velocity.twist.linear.x = 0.0
-        self.velocity.twist.angular.z = 1.8
+        self.velocity.twist.angular.z = 1.2
+        self.interface.msg_cmd_vel.set(self.velocity,1)
+        rospy.sleep(0.2)
+        self.listening = True  
     def forward(self):
-        self.velocity.twist.linear.x = 0.25
+        self.velocity.twist.linear.x = 0.2
         self.velocity.twist.angular.z = 0.0
+        self.interface.msg_cmd_vel.set(self.velocity,1)
+        rospy.sleep(0.2)
+        self.listening = True  
 
     def stop(self):
         self.velocity.twist.linear.x = 0.0
         self.velocity.twist.angular.z = 0.0
+        self.interface.msg_cmd_vel.set(self.velocity,1)
+        rospy.sleep(0.2)
+        self.listening = True  
     def found(self):
         pass
 
@@ -139,6 +155,10 @@ class lostMiro:
 
     def execute_movement(self, *args):
         if self.listening: return
+
+
+        return 
+
         self.velocity.twist.linear.x = 0
         self.velocity.twist.angular.z = 0
         self.pub_cmd_vel.publish(self.velocity)

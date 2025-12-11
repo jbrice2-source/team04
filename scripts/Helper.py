@@ -27,7 +27,7 @@ import heapq
 droop, wag, left_eye, right_eye, left_ear, right_ear = range(6)
 
 MAP_SCALE = 10
-MAP_SIZE = 50
+MAP_SIZE = 100
 OBSTACLE_SIZE=0
 BODY_SIZE=1
 
@@ -61,10 +61,10 @@ class Helper():
         self.camera = [None,None]
         self.kin = JointState()
         self.kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.kin.position = [0.0, math.radians(35.0), 0.0, math.radians(-10.0)]
+        self.kin.position = [0.0, math.radians(25.0), 0.0, math.radians(-10.0)]
         self.sens_kin = JointState()
         self.sens_kin.name = ["tilt", "lift", "yaw", "pitch"]
-        self.sens_kin.position = [0.0, math.radians(35.0), 0.0, math.radians(-10.0)]
+        self.sens_kin.position = [0.0, math.radians(25.0), 0.0, math.radians(-10.0)]
         self.velocity = TwistStamped()
         self.input_package = None
         self.move_head = True
@@ -100,9 +100,7 @@ class Helper():
         self.sub_camr = rospy.Subscriber(robot_name + "/sensors/camr/compressed",
                 CompressedImage, self.callback_camr, queue_size=1, tcp_nodelay=True)
         
-        self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
-        self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
-        self.timer3 = rospy.Timer(rospy.Duration(3), self.detect_miro)
+
 
         # creating plots for visualisation
         plt.figure()
@@ -121,6 +119,12 @@ class Helper():
         self.camera_display1 = plt.imshow(np.array([[0.0]]), 'gray')
         plt.subplot(326)
         self.camera_display2 = plt.imshow(np.array([[0.0]]), 'gray')
+
+        # self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+        # self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
+        # self.timer3 = rospy.Timer(rospy.Duration(10), self.detect_miro)
+        self.send_audio("turn left")
+
         plt.show()
         
         
@@ -133,14 +137,15 @@ class Helper():
             if self.starting_pose is None:
                 self.starting_pose = self.pos.copy()
             self.map_pos = self.pos2map(self.pos[0],self.pos[1])
+            self.prob_map[self.map_pos[0],self.map_pos[1]] = 255
             
     
     def callback_package(self, package):
         if package is not None:
             self.input_package = package
-            if not hasattr(self, 'obstacle_timer'):
-                self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
-                self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
+            # if not hasattr(self, 'obstacle_timer'):
+            #     self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+            #     self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
     
     def callback_kin(self, kin):
         if kin is not None:
@@ -176,7 +181,7 @@ class Helper():
             if abs(self.kin.position[2]) > np.radians(30):
                 self.head_direction *= -1 # reverses the direction after hitting a limit
         # self.pub_kin.publish(self.kin)     
-            self.interface.msg_kin_joints.set(self.kin,0.1)
+        self.interface.msg_kin_joints.set(self.kin,0.1)
     
     # function to increase the probability that a given cell is full
     def increase_prob(cells, is_full,dist):
@@ -188,9 +193,9 @@ class Helper():
                 new_cells[i] = cell
                 continue
             elif is_full:
-                new_cell = cell/255*0.6 # due to risk aversion full cells are made more likely to register than empty ones
+                new_cell = cell/255*0.8 # due to risk aversion full cells are made more likely to register than empty ones
             else:
-                new_cell = 1-((1-cell/255)*0.95)
+                new_cell = 1-((1-cell/255)*0.9)
             new_cells[i] = new_cell*255
             if new_cells[i] == 127: # 127 indicates an unexplored cell, if evaluated cannot ever be unexplored again
                 new_cells[i] += 1
@@ -218,12 +223,12 @@ class Helper():
                 return
             if dist == float('inf'): # filtering out infinity
                 dist = 1.0
-            dist += 0.05 # adds distance to account for head offset, probably useless
+            # dist += 0.05 # adds distance to account for head offset, probably useless
             
             # makes the robot reverse and recalculate it's path if it's in front of an obstacle 
 
                 # rospy.sleep(1)
-            print(dist)
+            # print(dist)
 
             # calculates the objects relative position
             obj_vec = dist*np.array([np.cos(self.orientation+self.sens_kin.position[2]),
@@ -282,8 +287,8 @@ class Helper():
                 cur_pos = node_queue.get()
                 cur_val = dist_map[cur_pos[0],cur_pos[1]]
                 
-                # uses von-newman neighboourhood for dijkstra's
-                adjacent_list = np.array([[-1,0],[0,1],[1,0],[0,-1]])
+                # uses moore neighboourhood for dijkstra's
+                adjacent_list = np.array([[-1,0],[0,1],[1,0],[0,-1],[-1,-1],[-1,1],[1,-1],[1,1]])
                 adjacent = cur_pos+adjacent_list
                 
                 # itterates through all the adjacent nodes
@@ -342,7 +347,7 @@ class Helper():
                         next_val = (value, i)
                 # appends the best value to the path
                 path.append(next_val[1])
-            self.path = path[:-5]
+            self.path = path
             if not hasattr(self, 'movement_timer'):
                 self.movement_timer = rospy.Timer(rospy.Duration(0.2), self.explore_path)
 
@@ -367,7 +372,7 @@ class Helper():
         try:
             if len(self.path) == 0:
                 self.velocity.twist.linear.x = 0.05
-                self.velocity.twist.angular.z = 1.8
+                self.velocity.twist.angular.z = 2.8
                 self.interface.msg_cmd_vel.set(self.velocity, 0.2)
                 # rospy.sleep(6)
                 print("path finished")
@@ -376,7 +381,7 @@ class Helper():
             # calculates the target angle for the position
             target_pos = self.map2pos(*self.path[-1])
             target = np.arctan2(target_pos[1]-self.pos[1],target_pos[0]-self.pos[0])
-            print(self.path[-1], target_pos-self.pos)
+            # print(self.path[-1], target_pos-self.pos)
 
             # calculates the differance in angle between current and target
             dists = [(self.orientation%(2*np.pi)-target%(2*np.pi))%(2*np.pi),(target%(2*np.pi)-self.orientation%(2*np.pi))%(2*np.pi)]
@@ -400,14 +405,14 @@ class Helper():
             # checks if the robot is looking in the right direction
             if min(dists) < 0.3:
                 # self.velocity.twist.angular.z = 0.0
-                if dist < 0.4 and abs(self.sens_kin.position[2]) < 0.6:
+                if dist < 0.35 and abs(self.sens_kin.position[2]) < 0.6:
                     self.path = []
-                    self.velocity.twist.linear.x = -0.2
+                    self.velocity.twist.linear.x = -0.3
                     self.move_head = False
                     # self.interface.msg_cmd_vel.set(self.velocity, 1)
                     print("reversing")
                 else:
-                    self.velocity.twist.linear.x = 0.2*(1-min(dists)/np.pi)
+                    self.velocity.twist.linear.x = 0.4#*(1-min(dists)/np.pi)
                     self.move_head = True
                     print("moving forwards")
             else:
@@ -421,13 +426,13 @@ class Helper():
                 print("stop turning", min(dists))
             # moves clockwise if the right angle is lower
             elif dists[0] >= dists[1]:
-                self.velocity.twist.angular.z = 1.8
+                self.velocity.twist.angular.z = 2.8
                 print("moving right", min(dists))
                 # self.velocity.twist.linear.x = 0.02
                 # print("turning left")
             # moves counter clockwise otherwise
             else:
-                self.velocity.twist.angular.z = -1.8
+                self.velocity.twist.angular.z = -2.8
                 print("moving left", min(dists))
                 # self.velocity.twist.linear.x = 0.02
 
@@ -460,8 +465,8 @@ class Helper():
         self.miro_found = True
         self.move_head = False
         self.kin.position = [0.0, math.radians(50.0), math.radians(0), math.radians(4.0)]
-        self.interface.msg_kin_joints.set(self.kin,1)
-        rospy.sleep(0.6)
+        self.interface.msg_kin_joints.set(self.kin,0.4)
+        rospy.sleep(0.7)
         camera_images = self.camera.copy()
         for index, img in enumerate(camera_images):
             classes = ["0","45","90","135","180","225","270","315"]
@@ -485,7 +490,7 @@ class Helper():
             res1 = np.argmax(results[:,4:])//8
             result = results[res1]
             conf = np.max(result[4:])
-            if conf > 0.5:
+            if conf > 0.6:
                 print("found miro")
                 self.timer3.shutdown()
                 self.final_map = self.prob_map<150
@@ -500,9 +505,11 @@ class Helper():
             else:
                 self.camera_display2.set_data(image)#
         else:
-            self.miro_found = False
-            self.kin.position = [0.0, math.radians(30.0), 0.0, math.radians(-10.0)]
+            self.kin.position = [0.0, math.radians(25.0), 0.0, math.radians(-10.0)]
+            self.interface.msg_kin_joints.set(self.kin,0.3)
+            rospy.sleep(0.4)
             self.move_head = True
+            self.miro_found = False
 
 
     
@@ -834,23 +841,34 @@ class Helper():
         Inputs: Command
         Outputs: Audio
         """
-        return
+        volume = 250
+        duration = 50
         msg = UInt16MultiArray()
-        if command == "found":
+        if command == "turn left":
             # msg.data = [1200, 128, 1000]
-            self.interface.post_tone(1200, 25, 10)
-        elif command == "forwards":
-            # msg.data = [1600, 128, 1000]
-            self.interface.post_tone(1600, 25, 10)
-        elif command == "stop":
-            # msg.data = [2000, 128, 1000]
-            self.interface.post_tone(2000, 25, 10)
-        elif command == "turn left":
-            # msg.data = [2400, 128, 1000]
-            self.interface.post_tone(2400, 25, 10)
+            self.interface.post_tone(1150, duration, volume)
+            self.interface.post_tone(1200, duration, volume)
+            self.interface.post_tone(1250, duration, volume)
         elif command == "turn right":
+            # msg.data = [1600, 128, 1000]
+            self.interface.post_tone(1550, duration, volume)
+            self.interface.post_tone(1600, duration, volume)
+            self.interface.post_tone(1650, duration, volume)
+        elif command == "forward":
+            # msg.data = [2000, 128, 1000]
+            self.interface.post_tone(1950, duration, volume)
+            self.interface.post_tone(2000, duration, volume)
+            self.interface.post_tone(2050, duration, volume)
+        elif command == "stop":
+            # msg.data = [2400, 128, 1000]
+            self.interface.post_tone(2350, duration, volume)
+            self.interface.post_tone(2400, duration, volume)
+            self.interface.post_tone(2450, duration, volume)
+        elif command == "found":
             # msg.data = [2800, 128, 1000]
-            self.interface.post_tone(2800, 25, 10)
+            self.interface.post_tone(750, duration, volume)
+            self.interface.post_tone(800, duration, volume)
+            self.interface.post_tone(850, duration,volume)
         # self.interface.post_tone(2800, 128, 1000)
         print(command)
         # self.pub_tone.publish(msg)
