@@ -23,6 +23,7 @@ import matplotlib.animation as animation
 
 import uuid
 import heapq
+import wave
 
 droop, wag, left_eye, right_eye, left_ear, right_ear = range(6)
 
@@ -79,8 +80,7 @@ class Helper():
         self.distance_queue = []
         self.pred_pos = None
         self.pred_map_pos = None
-
-
+        self.pub_stream = rospy.Publisher(robot_name + "/control/stream", Int16MultiArray, queue_size=10)
 
         # Calls publishers and subscribers
         self.pub_cmd_vel = rospy.Publisher(robot_name + "/control/cmd_vel", TwistStamped, queue_size=10)
@@ -120,10 +120,19 @@ class Helper():
         plt.subplot(326)
         self.camera_display2 = plt.imshow(np.array([[0.0]]), 'gray')
 
-        # self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
-        # self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
-        # self.timer3 = rospy.Timer(rospy.Duration(10), self.detect_miro)
-        self.send_audio("turn left")
+        self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+        self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
+        self.timer3 = rospy.Timer(rospy.Duration(7), self.detect_miro)
+        # self.send_audio("turn left")
+        # rospy.sleep(1)
+        # self.send_audio("turn right")
+        # rospy.sleep(1)
+        # self.send_audio("forward")
+        # rospy.sleep(1)
+        # self.send_audio("stop")
+        # rospy.sleep(1)
+        # self.send_audio("found")
+
 
         plt.show()
         
@@ -143,9 +152,9 @@ class Helper():
     def callback_package(self, package):
         if package is not None:
             self.input_package = package
-            # if not hasattr(self, 'obstacle_timer'):
-            #     self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
-            #     self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
+            if not hasattr(self, 'obstacle_timer'):
+                self.obstacle_timer = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
+                self.exploration_timer = rospy.Timer(rospy.Duration(1.0), self.exploration_algorithm)
     
     def callback_kin(self, kin):
         if kin is not None:
@@ -836,39 +845,88 @@ class Helper():
             # print("turning right")
             self.send_audio("turn right")
 
+    def load_wav(path, speaker_sample_rate=8000):
+        try:
+            # open wav read only mode
+            file = wave.open(path, 'rb')
+        except wave.Error as e:
+            return rospy.logerr("Error loading WAV file '%s': %s", path, str(e))
+        
+        # get wav header information
+        nframes = file.getnframes()
+        sample_rate = file.getframerate()
+        sample_width = file.getsampwidth()
+        nchannels = file.getnchannels()
+
+        # get raw audio data
+        frames = file.readframes(nframes)
+        file.close()
+        
+        # convert bytes data to numpy array
+        audio = np.frombuffer(frames, dtype=np.int16)
+        
+        # downmix to mono (files are stereo)
+        audio = audio.reshape(-1, nchannels).mean(axis=1).astype(np.int16)
+
+        # resample
+        ratio = float(sample_rate) / float(speaker_sample_rate)
+        original_indices = np.arange(len(audio))
+        new_indices = np.arange(0, len(audio), ratio)
+        resampled_audio = np.interp(new_indices, original_indices, audio).astype(np.int16)
+        
+        return resampled_audio
+
     def send_audio(self, command):
         """Send audio signal
         Inputs: Command
         Outputs: Audio
         """
-        volume = 250
-        duration = 50
+
+        FREQUENCY_PATH = "/root/mdk/bin/shared/team04/sound_files/"
+
+        volume = 180
+        duration = 100
         msg = UInt16MultiArray()
+        audio_data = np.array([])
         if command == "turn left":
             # msg.data = [1200, 128, 1000]
-            self.interface.post_tone(1150, duration, volume)
-            self.interface.post_tone(1200, duration, volume)
-            self.interface.post_tone(1250, duration, volume)
+            # audio_data = Helper.load_wav(FREQUENCY_PATH + "2400_hz.wav")
+
+                # rospy.sleep(0.1)
+
+            self.interface.post_tone(440, duration, volume)
+            self.interface.post_tone(480, duration, volume)
+            self.interface.post_tone(520, duration, volume)
         elif command == "turn right":
+            # audio_data = Helper.load_wav(FREQUENCY_PATH + "2800_hz.wav")
             # msg.data = [1600, 128, 1000]
-            self.interface.post_tone(1550, duration, volume)
-            self.interface.post_tone(1600, duration, volume)
-            self.interface.post_tone(1650, duration, volume)
+            self.interface.post_tone(760, duration, volume) 
+            self.interface.post_tone(800, duration, volume)
+            self.interface.post_tone(840, duration, volume)
         elif command == "forward":
             # msg.data = [2000, 128, 1000]
-            self.interface.post_tone(1950, duration, volume)
-            self.interface.post_tone(2000, duration, volume)
-            self.interface.post_tone(2050, duration, volume)
+            # audio_data = Helper.load_wav(FREQUENCY_PATH + "3200_hz.wav")
+            self.interface.post_tone(1080, duration, volume)
+            self.interface.post_tone(1120, duration, volume)
+            self.interface.post_tone(1160, duration, volume)
         elif command == "stop":
             # msg.data = [2400, 128, 1000]
-            self.interface.post_tone(2350, duration, volume)
-            self.interface.post_tone(2400, duration, volume)
-            self.interface.post_tone(2450, duration, volume)
+            # audio_data = Helper.load_wav(FREQUENCY_PATH + "3600_hz.wav")
+            self.interface.post_tone(1400, duration, volume)
+            self.interface.post_tone(1440, duration, volume)
+            self.interface.post_tone(1480, duration, volume)
         elif command == "found":
             # msg.data = [2800, 128, 1000]
-            self.interface.post_tone(750, duration, volume)
-            self.interface.post_tone(800, duration, volume)
-            self.interface.post_tone(850, duration,volume)
+                # audio_data = Helper.load_wav(FREQUENCY_PATH + "4000_hz.wav")
+            self.interface.post_tone(1720, duration, volume)
+            self.interface.post_tone(1760, duration, volume)
+            self.interface.post_tone(1800, duration,volume)
+        # r = rospy.Rate(8000/512)
+        # for i in range(0,len(audio_data),512):
+        #     msg2 = Int16MultiArray()
+        #     msg2.data = audio_data[i:i+512]*3
+        #     self.pub_stream.publish(msg2)
+        #     r.sleep()
         # self.interface.post_tone(2800, 128, 1000)
         print(command)
         # self.pub_tone.publish(msg)

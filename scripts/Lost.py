@@ -81,11 +81,11 @@ class lostMiro:
         audio = self.audio_data[:500]
         # if 3000hz - 3400hz:
 
-        ranges = [[1100,1300],
-                  [1500,1700],
-                  [1900,2100],
-                  [2300,2500],
-                  [2700,2900],
+        ranges = [[400,560],
+                  [720,880],
+                  [1040,1200],
+                  [1360,1520],
+                  [1680,1840],
                   ]
         commands = [self.turn_left,
                     self.turn_right,
