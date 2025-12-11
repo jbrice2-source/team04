@@ -830,7 +830,7 @@ class Helper():
             while cellDetails[path[-1][0],path[-1][1],g] > 0:
                 # print(path,np.array([cellDetails[path[-1][0],path[-1][1],parentx:parenty+1]]))
                 path.append(cellDetails[path[-1][0],path[-1][1],parentx:parenty+1])
-        self.path = path
+        self.other_path = path
         display_map = cv2.cvtColor((1-self.final_map.astype(np.uint8))*255, cv2.COLOR_GRAY2RGB)
         for i in path:
             display_map[i[0],i[1]] = np.array([255,0,0])
@@ -841,8 +841,8 @@ class Helper():
         if self.pred_map_pos is None:
             return
 
-        start = self.path[10]
-        goal = self.path[-1]
+        start = self.other_path[10]
+        goal = self.other_path[-1]
         width, height = self.final_map.shape
         grid = self.final_map
 
@@ -921,7 +921,7 @@ class Helper():
             while cellDetails[path[-1][0],path[-1][1],g] > 0:
                 print(path,np.array([cellDetails[path[-1][0],path[-1][1],parentx:parenty+1]]))
                 path.append(cellDetails[path[-1][0],path[-1][1],parentx:parenty+1])
-        self.helper_path = path            self.other_path = path
+        self.helper_path = path            
         display_map = cv2.cvtColor((1-self.final_map.astype(np.uint8))*255, cv2.COLOR_GRAY2RGB)
         for i in path:
             display_map[i[0],i[1]] = np.array([255,0,0])
