@@ -74,13 +74,18 @@ class Helper():
         self.map_pos = np.copy(self.map_start)
         robot_name = "/miro"
         self.miro_found = False
+        self.detecting_miro = False
+        self.undetect_count = 0
         self.pred_dist = [None, None]
         self.midpoints = [None, None]
         self.angle_queue = []
         self.distance_queue = []
+        self.other_path = []
         self.pred_pos = None
         self.pred_map_pos = None
         self.pub_stream = rospy.Publisher(robot_name + "/control/stream", Int16MultiArray, queue_size=10)
+
+
 
         # Calls publishers and subscribers
         self.pub_cmd_vel = rospy.Publisher(robot_name + "/control/cmd_vel", TwistStamped, queue_size=10)
@@ -123,6 +128,14 @@ class Helper():
         self.timer1 = rospy.Timer(rospy.Duration(0.1), self.obstacle_detection)
         self.timer2 = rospy.Timer(rospy.Duration(0.1), self.head_move)
         self.timer3 = rospy.Timer(rospy.Duration(7), self.detect_miro)
+        # self.send_audio("turn left")
+        # rospy.sleep(1)
+        # self.send_audio("turn left")
+        # rospy.sleep(1)
+        # self.send_audio("turn left")
+        # rospy.sleep(1)
+        # self.send_audio("turn left")
+        # rospy.sleep(1)
         # self.send_audio("turn left")
         # rospy.sleep(1)
         # self.send_audio("turn right")
@@ -184,8 +197,8 @@ class Helper():
     
     # continuously moves the head around to better guage it's surroundings
     def head_move(self, *args):
-        if self.miro_found: return
         if self.move_head:
+            if self.miro_found or self.detecting_miro: return
             self.kin.position[2] = self.sens_kin.position[2]+np.radians(self.head_direction)
             if abs(self.kin.position[2]) > np.radians(30):
                 self.head_direction *= -1 # reverses the direction after hitting a limit
@@ -226,7 +239,7 @@ class Helper():
         Outputs: map
         """
         try:
-            if self.miro_found: return
+            if self.miro_found or self.detecting_miro: return
             dist = self.input_package.sonar.range
             if self.starting_pose is None or self.pos is None:
                 return
@@ -281,7 +294,7 @@ class Helper():
         Outputs: path
         """
         try:
-            if self.miro_found: return
+            if self.miro_found or self.detecting_miro: return
             if len(self.path) > 3:
                 return
             map_copy = self.prob_map.copy()
@@ -366,7 +379,7 @@ class Helper():
                 path_map[i[0],i[1]] = 255
             self.display3.set_data(path_map)
             plt.draw()
-            print(path)         
+            # print(path)         
         except Exception as e:
             print(e)
 
@@ -376,13 +389,13 @@ class Helper():
         Inputs: Pose, path
         Outputs: Movement
         """
-        if self.miro_found:
+        if self.miro_found or self.detecting_miro:
             return
         try:
             if len(self.path) == 0:
                 self.velocity.twist.linear.x = 0.05
-                self.velocity.twist.angular.z = 2.8
-                self.interface.msg_cmd_vel.set(self.velocity, 0.2)
+                self.velocity.twist.angular.z = 1.8
+                self.interface.msg_cmd_vel.set(self.velocity, 0.3)
                 # rospy.sleep(6)
                 print("path finished")
                 return
@@ -416,12 +429,12 @@ class Helper():
                 # self.velocity.twist.angular.z = 0.0
                 if dist < 0.35 and abs(self.sens_kin.position[2]) < 0.6:
                     self.path = []
-                    self.velocity.twist.linear.x = -0.3
+                    self.velocity.twist.linear.x = -0.2
                     self.move_head = False
                     # self.interface.msg_cmd_vel.set(self.velocity, 1)
                     print("reversing")
                 else:
-                    self.velocity.twist.linear.x = 0.4#*(1-min(dists)/np.pi)
+                    self.velocity.twist.linear.x = 0.3#*(1-min(dists)/np.pi)
                     self.move_head = True
                     print("moving forwards")
             else:
@@ -435,13 +448,13 @@ class Helper():
                 print("stop turning", min(dists))
             # moves clockwise if the right angle is lower
             elif dists[0] >= dists[1]:
-                self.velocity.twist.angular.z = 2.8
+                self.velocity.twist.angular.z = 1.8
                 print("moving right", min(dists))
                 # self.velocity.twist.linear.x = 0.02
                 # print("turning left")
             # moves counter clockwise otherwise
             else:
-                self.velocity.twist.angular.z = -2.8
+                self.velocity.twist.angular.z = -1.8
                 print("moving left", min(dists))
                 # self.velocity.twist.linear.x = 0.02
 
@@ -471,11 +484,11 @@ class Helper():
         Inputs: Camera
         Outputs: Bool
         """
-        self.miro_found = True
-        self.move_head = False
+        if self.miro_found: return
+        self.detecting_miro = True
         self.kin.position = [0.0, math.radians(50.0), math.radians(0), math.radians(4.0)]
-        self.interface.msg_kin_joints.set(self.kin,0.4)
-        rospy.sleep(0.7)
+        self.interface.msg_kin_joints.set(self.kin,0.3)
+        rospy.sleep(0.5)
         camera_images = self.camera.copy()
         for index, img in enumerate(camera_images):
             classes = ["0","45","90","135","180","225","270","315"]
@@ -499,26 +512,29 @@ class Helper():
             res1 = np.argmax(results[:,4:])//8
             result = results[res1]
             conf = np.max(result[4:])
+            if index == 0:
+                self.camera_display1.set_data(image)#
+            else:
+                self.camera_display2.set_data(image)#
             if conf > 0.6:
                 print("found miro")
-                self.timer3.shutdown()
+
+                self.send_audio("found")
+                rospy.sleep(5)
+                self.miro_found = True
+                self.detecting_miro = False
                 self.final_map = self.prob_map<150
                 self.timer4 = rospy.Timer(rospy.Duration(0.5), self.pose_detection)
                 self.timer5 = rospy.Timer(rospy.Duration(0.1), self.look_miro)
                 self.timer5 = rospy.Timer(rospy.Duration(0.5), self.move_miro)
                 self.timer6 = rospy.Timer(rospy.Duration(1), self.Astar)
-                self.send_audio("found")
                 break
-            if index == 0:
-                self.camera_display1.set_data(image)#
-            else:
-                self.camera_display2.set_data(image)#
+
         else:
             self.kin.position = [0.0, math.radians(25.0), 0.0, math.radians(-10.0)]
             self.interface.msg_kin_joints.set(self.kin,0.3)
             rospy.sleep(0.4)
-            self.move_head = True
-            self.miro_found = False
+        self.detecting_miro = False
 
 
     
@@ -527,8 +543,10 @@ class Helper():
         Inputs: Pose, Camera
         Outputs: Pose
         """
+        if not self.miro_found: return
         if type(None) in map(type,self.camera):
             return
+        self.undetect_count += 1
         try:
             for index, img in enumerate(self.camera):
                 classes = ["0","45","90","135","180","225","270","315"]
@@ -568,6 +586,7 @@ class Helper():
                 cv2.putText(image,classes[class_id]+' '+f"{conf:.2f} {pred_dist:.2f}",(bbox[0],bbox[1]+20),
                                 cv2.FONT_HERSHEY_SIMPLEX,0.7,(255,0,0),2)            
                 if conf > 0.45:
+                    self.undetect_count = 0
                     other_angle = (self.orientation+np.radians(int(classes[class_id]))-np.pi+self.sens_kin.position[2])%(np.pi*2)
                     self.distance_queue.append(pred_dist)
                     self.angle_queue.append(other_angle)
@@ -591,11 +610,19 @@ class Helper():
                     self.camera_display1.set_data(image)#
                 else:
                     self.camera_display2.set_data(image)#
+            print(self.undetect_count)
+            if self.undetect_count > 3:
+                self.kin.position = [0.0, math.radians(25.0), 0.0, math.radians(-10.0)]
+                self.interface.msg_kin_joints.set(self.kin,0.3)
+                rospy.sleep(0.4)
+                self.miro_found = False
+                self.undetect_count = 0
         except Exception as e:
             print("unexpected error occured", e)
         plt.draw()
     
     def look_miro(self, *args):
+        if not self.miro_found: return
         if type(self.camera[0]) == type(None):
             return
         
@@ -707,13 +734,14 @@ class Helper():
         # self.pub_cmd_vel2.publish(self.velocity2)
 
     def heuristic(self,pos1,pos2):
-        return np.max(abs(pos1-pos2))
+        return np.sum(abs(pos1-pos2))
 
     def Astar(self, *args):
         """Uses A* to determine the miro's next path
         Inputs: Map
         Outputs: Path
         """
+        if not self.miro_found: return
         if self.pred_map_pos is None:
             return
 
@@ -795,9 +823,9 @@ class Helper():
             print(cellDetails[goal[0],goal[1],parentx:parenty+1])
             path = [cellDetails[goal[0],goal[1],parentx:parenty+1].reshape(2)]
             while cellDetails[path[-1][0],path[-1][1],g] > 0:
-                print(path,np.array([cellDetails[path[-1][0],path[-1][1],parentx:parenty+1]]))
+                # print(path,np.array([cellDetails[path[-1][0],path[-1][1],parentx:parenty+1]]))
                 path.append(cellDetails[path[-1][0],path[-1][1],parentx:parenty+1])
-        
+            self.other_path = path
         display_map = cv2.cvtColor((1-self.final_map.astype(np.uint8))*255, cv2.COLOR_GRAY2RGB)
         for i in path:
             display_map[i[0],i[1]] = np.array([255,0,0])
@@ -808,13 +836,16 @@ class Helper():
     def move_miro(self, *args):
         """Determines what signals to give the miro
         """
+        if not self.miro_found: return
+
         if self.pred_pos is None: #or len(self.other_path)==0:
             # self.velocity2.twist.linear.x = 0.0
             # self.velocity2.twist.angular.z = 0.0
             # self.pub_cmd_vel2.publish(self.velocity2)
             self.send_audio("stop")
             return
-        target_pos = self.map2pos(self.map_start[0],self.map_start[1])#self.other_path[0]+np.array([-1.0,0.0])
+        if len(self.other_path) == 0: return
+        target_pos = self.map2pos(self.other_path[0][0],self.other_path[0][1])#self.other_path[0]+np.array([-1.0,0.0])
         # self.velocity2.twist.linear.x = 0.15
         target = np.arctan2(target_pos[1]-self.pred_pos[1],target_pos[0]-self.pred_pos[0])
         
@@ -825,7 +856,7 @@ class Helper():
         if np.linalg.norm(target_pos-self.pred_pos) < 0.3:
             # self.velocity2.twist.linear.x = 0.0
             # self.velocity2.twist.angular.z = 0.0
-            # self.other_path = self.other_path[1:]
+            self.other_path = self.other_path[1:]
             self.send_audio("stop")
         
         # checks if the robot is looking in the right direction
@@ -884,8 +915,8 @@ class Helper():
 
         FREQUENCY_PATH = "/root/mdk/bin/shared/team04/sound_files/"
 
-        volume = 180
-        duration = 100
+        volume = 210
+        duration = 50
         msg = UInt16MultiArray()
         audio_data = np.array([])
         if command == "turn left":
@@ -918,9 +949,9 @@ class Helper():
         elif command == "found":
             # msg.data = [2800, 128, 1000]
                 # audio_data = Helper.load_wav(FREQUENCY_PATH + "4000_hz.wav")
-            self.interface.post_tone(1720, duration, volume)
-            self.interface.post_tone(1760, duration, volume)
-            self.interface.post_tone(1800, duration,volume)
+            self.interface.post_tone(1720, duration*10, volume)
+            self.interface.post_tone(1760, duration*10, volume)
+            self.interface.post_tone(1800, duration*10,volume)
         # r = rospy.Rate(8000/512)
         # for i in range(0,len(audio_data),512):
         #     msg2 = Int16MultiArray()
