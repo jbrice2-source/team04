@@ -435,45 +435,41 @@ class Explore:
         try:
             # open wav read only mode
             file = wave.open(path, 'rb')
-
-            # get wav header information
-            nframes = file.getnframes()
-            sample_rate = file.getframerate()
-            sample_width = file.getsampwidth()
-            nchannels = file.getnchannels()
-
-            # get raw audio data
-            frames = file.readframes(nframes)
-            file.close()
-            
-            # convert bytes data to numpy array
-            audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
-            
-            # downmix to mono (files are stereo)
-            audio = audio.reshape(-1, nchannels).mean(axis=1)
-
-            # resample
-            ratio = float(sample_rate) / float(speaker_sample_rate)
-            original_indices = np.arange(len(audio))
-            new_indices = np.arange(0, len(audio), ratio)
-            resampled_audio = np.interp(new_indices, original_indices, audio).astype(np.uint16)
-
-            # Convert to ros uint16multiarray
-            msg = UInt16MultiArray()
-            msg.data = resampled_audio.tolist()
         except wave.Error as e:
-            rospy.logerr("Error loading WAV file '%s': %s", path, str(e))
+            return rospy.logerr("Error loading WAV file '%s': %s", path, str(e))
+        
+        # get wav header information
+        nframes = file.getnframes()
+        sample_rate = file.getframerate()
+        sample_width = file.getsampwidth()
+        nchannels = file.getnchannels()
 
+        # get raw audio data
+        frames = file.readframes(nframes)
+        file.close()
+        
+        # convert bytes data to numpy array
+        audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+        
+        # downmix to mono (files are stereo)
+        audio = audio.reshape(-1, nchannels).mean(axis=1)
+
+        # resample
+        ratio = float(sample_rate) / float(speaker_sample_rate)
+        original_indices = np.arange(len(audio))
+        new_indices = np.arange(0, len(audio), ratio)
+        resampled_audio = np.interp(new_indices, original_indices, audio).astype(np.uint16)
+
+        # Convert to ros uint16multiarray
+        msg = UInt16MultiArray()
+        msg.data = resampled_audio.tolist()
+        
         return msg
     
-<<<<<<< HEAD
     def make_sound(self):
         FREQUENCY_PATH = "/root/mdk/catkin_ws/src/team04/sound_files/"
         
-=======
-    def make_sound(self,*args):
-        action = self.astar_path.pop()
-        print("action", action[0])
+        action = self.astar_path.pop
         #North
         if(action[1] == radians(360)):
             msg = UInt16MultiArray
