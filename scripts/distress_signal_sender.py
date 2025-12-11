@@ -4,7 +4,6 @@
 # - Uses same buffer logic as official "echo" example
 # - Loads a 20 kHz mono WAV, down-samples to ~8 kHz for playback
 # - Streams via /<MIRO_ROBOT_NAME>/control/stream
-# - No beeps, no digit encoding – just the howl, repeated
 #
 
 import rospy

@@ -105,7 +105,6 @@ class lostMiro:
             rospy.loginfo("700 - 900 Hz frequency detected in audio input.")
             rospy.loginfo("north")
             self.currentDirection = ((0.5,0),radians(180))
-            self.plot_band(fft(abs(channels[0])), [0, 1600], "700-900 Hz")
             print(self.listening)       
         # if 1000 - 1200hz:
         elif np.mean(abs(channels[1])) > threshhold:

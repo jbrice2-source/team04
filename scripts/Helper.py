@@ -31,14 +31,8 @@ OBSTACLE_SIZE=1
 BODY_SIZE=2
 
 
-#Grid Cell for the A-Star implementation
-class Cell:
-    def __init__(self):
-        self.parent_x = 0
-        self.parent_y = 0
-        self.f = float('inf')
-        self.g = float('inf')
-        self.h = 0
+
+
 
 class Helper():
     
@@ -133,7 +127,7 @@ class Helper():
         Outputs: map
         """
     
-    def eploration_algorithm(self):
+    def exploration_algorithm(self):
         """Performs bredth first search on the obstacle map
         Inputs: Pose, map
         Outputs: path
