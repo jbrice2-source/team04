@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(team04)
 
-## Uncomment if you add C++ nodes later
-# add_compile_options(-std=c++11)
-
 ###################################
 ## Find catkin and dependencies
 ###################################
@@ -13,16 +10,19 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
   sensor_msgs
+  tf
   tf2_ros
   message_generation
   message_runtime
+  cv_bridge
 )
+
 
 ###################################
 ## Package configuration
 ###################################
 catkin_package(
-  CATKIN_DEPENDS rospy std_msgs geometry_msgs nav_msgs sensor_msgs tf2_ros
+  CATKIN_DEPENDS rospy std_msgs geometry_msgs nav_msgs sensor_msgs tf2_ros tf cv_bridge
 )
 
 include_directories(${catkin_INCLUDE_DIRS})
@@ -54,6 +54,9 @@ install(DIRECTORY
   launch
   maps
   worlds
+  sound_files
+  src
+  tools
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   PATTERN ".git" EXCLUDE
 )
