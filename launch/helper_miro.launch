@@ -1,0 +1,10 @@
+<launch>
+
+  <!-- No special mode until distress call -->
+  <param name="/team04/lost_active" value="false"/>
+  <param name="/team04/helper_active" value="true"/>
+
+  <!-- Run your helper supervisor -->
+  <node pkg="team04" type="Helper.py" name="helper_supervisor" output="screen"/>
+
+</launch>
