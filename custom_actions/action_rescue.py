@@ -21,7 +21,7 @@
 import rospy
 import miro2 as miro
 from . import action_types
-class ActionHelper(action_types.ActionTemplate):
+class ActionRescue(action_types.ActionTemplate):
     def finalize(self):
         self.name = "helper"
         # Behaviour is externally driven, so we disable internal modulation
