@@ -7,4 +7,6 @@
   <!-- Run your helper supervisor -->
   <node pkg="team04" type="Helper.py" name="helper_supervisor" output="screen"/>
 
+  <!-- Terminal 1: miro demo
+       Terminal 2: roslaunch team04 helper_miro.launch -->
 </launch>
