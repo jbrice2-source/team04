@@ -34,7 +34,7 @@ Make sure to [install Docker](https://docs.docker.com/get-docker/) first.
 
 7. Make sure to run `source ~/.bashrc` on both laptops to resource their environment.
 
-8. Now, on one miro, run `python3 scripts/Helper.py`
+8. Now, on one miro, run `python3 /scripts/Helper.py`
 
 9. Finally, on the other miro, run `python3 scripts/Lost.py`
 
@@ -42,7 +42,7 @@ Make sure to [install Docker](https://docs.docker.com/get-docker/) first.
 
 ## `miro-docker` Changes
 
-### Libraries
+### Required Libraries
 
 - **Numpy** - Basic functions such as np.arrays 
 
@@ -57,3 +57,7 @@ Make sure to [install Docker](https://docs.docker.com/get-docker/) first.
 ### Packages
 
 - `team04` package - includes Lost.py and Helper.py, aswell as other scripts for testing purposes 
+
+## Notes
+
+### *If the uploaded docker image has failed to work, use the original miro-docker container and instead clone the `https://github.com/jbrice2-source/team04` repository into `root/mdk/catkin_ws/src/` and pip install the **Required Libraries**. Then follow the **Usage** instructions to test the project.*
