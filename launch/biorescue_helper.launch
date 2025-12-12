@@ -1,9 +1,0 @@
-<launch>
-    <!-- Helper robot starts as HELPER_CANDIDATE -->
-    <node pkg="team04" type="biorescue_phase1.py" name="biorescue_helper" output="screen">
-        <param name="is_lost" value="false"/>
-        <param name="distress_volume" value="200"/>
-        <param name="confirm_volume" value="180"/>
-        <param name="rumble_volume" value="180"/>
-    </node>
-</launch>

@@ -1,0 +1,12 @@
+<launch>
+
+  <!-- Set LOST robot BG action -->
+  <param name="/team04/lost_active" value="true"/>
+  <param name="/team04/helper_active" value="false"/>
+
+  <!-- Run your lost supervisor -->
+  <node pkg="team04" type="Lost.py" name="lost_supervisor" output="screen"/>
+    <!-- Terminal 1: miro demo
+       Terminal 2: roslaunch team04 lost_miro.launch -->
+
+</launch>
