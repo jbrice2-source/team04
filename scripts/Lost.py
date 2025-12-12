@@ -20,6 +20,7 @@ from math import radians
 from tf.transformations import euler_from_quaternion
 from nav_msgs.msg import Odometry
 
+
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -28,27 +29,18 @@ import scipy
 class lostMiro:
     def __init__(self):
         base1 = "/miro"
-        self.currentDirection = ((0,0),0)
-        self.currentAngle = 0
-        self.goalReached = False
         self.interface = miro.lib.RobotInterface()
         self.velocity = TwistStamped()
-        self.odom = Odometry()
         self.listening = True
-        self.currentInstruction = ""
-        self.posx = 1
-        self.posy = 2
-        self.target_angle = 0
-        self.init_pos = np.array([])
-        self.target_disp = 0
-        self.pub_cmd_vel = rospy.Publisher(base1 + "/control/cmd_vel", TwistStamped, queue_size=0)
-        self.odeometerySub = rospy.Subscriber(base1 + "/sensors/odom",
-            Odometry, self.callback_odom, queue_size=1, tcp_nodelay=True)
         self.audio = rospy.Subscriber(base1 + "/sensors/mics", Int16MultiArray, self.audio_callback, queue_size=1)
         self.audio_data = None
+        self.kin_joints = JointState()
+        self.kin_joints.name = ["tilt", "lift", "yaw", "pitch"]
+        self.kin_joints.position = [0.0, math.radians(20.0), 0.0, 0.0]
+        self.cos_joints = Float32MultiArray()
+        self.cos_joints.data = [0.0, 0.0, 1.0, 1.0, 0.0, 0.0]
 
         self.timer = rospy.Timer(rospy.Duration(0.1), self.detect_audio)
-        # self.timer = rospy.Timer(rospy.Duration(0.1), self.execute_movement)
 
     
     def bandpass(self, data, edges, sample_rate: float, poles: int = 5):
@@ -74,12 +66,12 @@ class lostMiro:
         plt.show(block=False)
 
     def detect_audio(self, *args):
-
+        self.interface.msg_cos_joints.set(self.cos_joints,10)
+        self.interface.msg_kin_joints.set(self.kin_joints,10)
         if self.audio_data is None:
             return
-        threshhold = 500
-        audio = self.audio_data[:500]
-        # if 3000hz - 3400hz:
+        threshhold = 900
+        audio = self.audio_data[:]
 
         ranges = [[400,560],
                   [720,880],
@@ -87,111 +79,62 @@ class lostMiro:
                   [1360,1520],
                   [1680,1840],
                   ]
-        commands = [self.turn_left,
+        commands = [self.found,
+                    self.turn_left,
                     self.turn_right,
                     self.forward,
                     self.stop,
-                    self.found]
+                    ]
         channels = np.zeros((len(ranges),audio.shape[0]))
         for i,n in enumerate(ranges):
             channels[i] = self.bandpass(audio, n, 20000.0)
 
         if not self.listening:
             return
-        amplitude = np.max(np.mean(abs(channels),axis=1))
-        channel = np.argmax(np.mean(abs(channels),axis=1))
-        rospy.loginfo(f"{amplitude} {channel}")
+        amplitude = np.max(np.count_nonzero(abs(channels)>threshhold,axis=1))
+        channel = np.argmax(np.count_nonzero(abs(channels)>threshhold,axis=1))
+        rospy.loginfo(f"{amplitude} {channel} {np.max(channels[channel])}")
 
 
-        if amplitude > threshhold:
+        if amplitude > 200:
             rospy.loginfo(f"{ranges[channel][0]} - {ranges[channel][1]} Hz frequency detected in audio input.")
             rospy.loginfo(commands[channel].__name__)
             self.listening = False
             commands[channel]()
-        # self.interface.msg_cmd_vel.set(self.velocity,0.1)
-        # self.listening = False
-        # self.execute_movement()
+
 
     def turn_left(self): 
         self.velocity.twist.linear.x = 0.0
-        self.velocity.twist.angular.z = -1.2
-        self.interface.msg_cmd_vel.set(self.velocity,1)
-        rospy.sleep(0.2)
+        self.velocity.twist.angular.z = 1.0
+        self.interface.msg_cmd_vel.set(self.velocity,0.4)
+        rospy.sleep(0.1)
         self.listening = True  
     def turn_right(self):
         self.velocity.twist.linear.x = 0.0
-        self.velocity.twist.angular.z = 1.2
-        self.interface.msg_cmd_vel.set(self.velocity,1)
-        rospy.sleep(0.2)
+        self.velocity.twist.angular.z = -1.0
+        self.interface.msg_cmd_vel.set(self.velocity,0.4)
+        rospy.sleep(0.1)
         self.listening = True  
     def forward(self):
-        self.velocity.twist.linear.x = 0.2
+        self.velocity.twist.linear.x = 0.12
         self.velocity.twist.angular.z = 0.0
-        self.interface.msg_cmd_vel.set(self.velocity,1)
-        rospy.sleep(0.2)
+        self.interface.msg_cmd_vel.set(self.velocity,0.4)
+        rospy.sleep(0.1)
         self.listening = True  
 
     def stop(self):
         self.velocity.twist.linear.x = 0.0
         self.velocity.twist.angular.z = 0.0
-        self.interface.msg_cmd_vel.set(self.velocity,1)
-        rospy.sleep(0.2)
+        self.interface.msg_cmd_vel.set(self.velocity,0.4)
+        rospy.sleep(0.1)
         self.listening = True  
     def found(self):
-        pass
-
-    def callback_odom(self, odometry):
-        if odometry != None:
-            self.posx = odometry.pose.pose.position.x
-            self.posy = odometry.pose.pose.position.y
-            orientation_q = odometry.pose.pose.orientation
-            orientation_list = [orientation_q.x,orientation_q.y,orientation_q.z,orientation_q.w]
-            _,_,yaw = euler_from_quaternion(orientation_list)
-            self.currentAngle = yaw
+        self.listening = True  
 
     def audio_callback(self,msg):
         audio = np.asarray(msg.data)
         self.audio_data = audio
 
-    def execute_movement(self, *args):
-        if self.listening: return
-
-
-        return 
-
-        self.velocity.twist.linear.x = 0
-        self.velocity.twist.angular.z = 0
-        self.pub_cmd_vel.publish(self.velocity)
-        invert_move = -self.currentDirection[1]
-        dists = [(self.currentAngle%(2*np.pi)-invert_move%(2*np.pi))%(2*np.pi),(invert_move%(2*np.pi)-self.currentAngle%(2*np.pi))%(2*np.pi)]
-        self.velocity.twist.linear.x = 0.0
-        self.velocity.twist.angular.z = 0.0
-        self.pub_cmd_vel.publish(self.velocity)
-        newpos = np.array([self.posx - self.currentDirection[0][0],self.posy - self.currentDirection[0][1]])
-        cur_pos = np.array([self.posx,self.posy])
-        print(self.currentDirection)
-        if np.linalg.norm(newpos-cur_pos) < 0.1:
-            self.velocity.twist.linear.x = 0
-            self.velocity.twist.angular.z = 0
-            self.pub_cmd_vel.publish(self.velocity)
-            rospy.sleep(1)
-            self.listening = True
-        else:
-            cur_pos = np.array([self.posx,self.posy])
-            angle = np.arctan2(*(cur_pos-newpos))
-            dists = [(self.currentAngle%(2*np.pi)-invert_move%(2*np.pi))%(2*np.pi),(invert_move%(2*np.pi)-self.currentAngle%(2*np.pi))%(2*np.pi)]
-            print(newpos, cur_pos, angle)
-            if min(dists) < 0.1:
-                self.velocity.twist.linear.x = 0.1
-                self.velocity.twist.angular.z = 0.0
-                self.pub_cmd_vel.publish(self.velocity)                
-            elif dists[0] > dists[1]:
-                # print("iogs")
-                self.velocity.twist.angular.z = 1.0
-            else:
-                # print("ioadhs")
-                self.velocity.twist.angular.z = -1.0
-            self.pub_cmd_vel.publish(self.velocity)
 
 
 if __name__ == "__main__":
@@ -200,14 +143,7 @@ if __name__ == "__main__":
         pass
     else:
         rospy.init_node("lost_nav")
-    # mic = rospy.Subscriber("miro01/sensors/mics", Int16MultiArray, audio_callback, queue_size=1)
     try:
-        # while robot.goalReached == False:
-        #     if robot.listening == False:
-        #         print("listening2 ", robot.listening)
-        #         robot.execute_movement()
-        #         robot.listening = True
-        #     else:
         rospy.spin()
     except KeyboardInterrupt:
         print("exiting...")
