@@ -7,12 +7,18 @@
 # High-priority BG action used to suspend demo/forebrain behaviour
 # when the robot is “lost”.
 #
-# Activation:
+# On Activation:
 #       /team04/lost_active == True  →  priority_uninterruptable (Avoids demo interuption)
 #       /team04/lost_active == False →  0.0
 #
-# All movement + distress signalling
-# is controlled externally.
+# Add these to the node_action.py (path:/Users/abdurrahmanibrahim/Downloads/mdk-230105/share/python/miro2/core/node_action.py)
+#   from action.action_rescue import ActionRescue # Added imports
+#   from action.action_lost import ActionLost # Added imports
+#   
+#                 self.actions = [
+#                 ActionRescue(self), # OUR NEW RESCUE ACTION
+#                 ActionLost(self) # OUR NEW LOST ACTION
+#                 
 # 
 import rospy
 import numpy as np
